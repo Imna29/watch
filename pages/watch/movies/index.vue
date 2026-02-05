@@ -43,9 +43,6 @@ const addCarouselItem = () => {
 };
 
 // Initial population
-for (let i = 0; i < 4; i++) {
-    addCarouselItem();
-}
 
 function loadMoreItems() {
     for (let i = 0; i < 2; i++) {
@@ -69,7 +66,9 @@ watch(y, () => {
 });
 
 watch(movieGenres, () => {
+    for (let i = 0; i < 4; i++) {
     addCarouselItem();
+}
 });
 </script>
 
