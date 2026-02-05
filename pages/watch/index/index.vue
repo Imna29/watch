@@ -91,6 +91,24 @@ watch(movieGenres, async () => {
         await nextTick();
 }
 });
+
+watch(usedMovieGenres, async () => {
+    if(usedMovieGenres.value.size < 2) {
+        loadMoreItems();
+    }
+}, {
+    immediate: true
+});
+
+watch(usedTvGenres, async () => {
+    if(usedTvGenres.value.size < 2) {
+        loadMoreItems();
+    }
+}, {
+    immediate: true
+});
+
+
 </script>
 
 <template>
