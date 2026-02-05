@@ -10,46 +10,68 @@ definePageMeta({
 const { data: movieGenres, isPending: isLoadingMovieGenres } = useMovieGenres();
 const { data: tvGenres, isPending: isLoadingTvGenres } = useTvGenres();
 
-const usedMovieGenres = ref(new Set<number>());
-const usedTvGenres = ref(new Set<number>());
+const usedMovieGenres = ref<Set<number>>(new Set());
+const usedTvGenres = ref<Set<number>>(new Set());
 const carouselItems = ref<any[]>([]);
 const { y } = useWindowScroll();
+
+// Prevent concurrent initialization
+const isInitializing = ref(false);
+const hasInitialized = ref(false);
 
 const isLoading = computed(() => isLoadingMovieGenres.value || isLoadingTvGenres.value);
 
 const getRandomUnusedGenre = (genres: any[], usedGenres: Set<number>) => {
-    if (!genres) return null;
+    if (!genres?.length) return null;
     const availableGenres = genres.filter((genre) => !usedGenres.has(genre.id));
     if (availableGenres.length === 0) return null;
     const randomIndex = Math.floor(Math.random() * availableGenres.length);
     return availableGenres[randomIndex];
 };
 
-const getRandomUnusedMovieGenre = computed(() =>
-    getRandomUnusedGenre(movieGenres.value?.genres || [], usedMovieGenres.value),
-);
-
-const getRandomUnusedTvGenre = computed(() =>
-    getRandomUnusedGenre(tvGenres.value?.genres || [], usedTvGenres.value),
-);
-
 const addCarouselItem = async () => {
-    await nextTick();
+    // Don't proceed if genres aren't ready
+    if (!movieGenres.value?.genres || !tvGenres.value?.genres) return;
+
     const isMovie = carouselItems.value.length % 2 === 0;
-    const genre = isMovie
-        ? getRandomUnusedMovieGenre.value
-        : getRandomUnusedTvGenre.value;
+    const genres = isMovie ? movieGenres.value.genres : tvGenres.value.genres;
+    const usedSet = isMovie ? usedMovieGenres.value : usedTvGenres.value;
 
-    console.log(genre)
+    const genre = getRandomUnusedGenre(genres, usedSet);
 
-    if (!genre) return;
+    if (!genre) {
+        // If this type is exhausted, try the other type
+        const fallbackIsMovie = !isMovie;
+        const fallbackGenres = fallbackIsMovie ? movieGenres.value.genres : tvGenres.value.genres;
+        const fallbackUsed = fallbackIsMovie ? usedMovieGenres.value : usedTvGenres.value;
+        const fallbackGenre = getRandomUnusedGenre(fallbackGenres, fallbackUsed);
+
+        if (!fallbackGenre) return; // Both exhausted
+
+        // Add fallback item instead
+        const sortOptions = ["vote_average.desc", "popularity.desc"];
+        const randomSort = sortOptions[Math.floor(Math.random() * sortOptions.length)];
+
+        carouselItems.value.push({
+            id: Date.now() + Math.random(), // Ensure unique ID
+            genre: fallbackGenre,
+            sortBy: randomSort,
+            isMovie: fallbackIsMovie,
+        });
+
+        if (fallbackIsMovie) {
+            usedMovieGenres.value.add(fallbackGenre.id);
+        } else {
+            usedTvGenres.value.add(fallbackGenre.id);
+        }
+        return;
+    }
 
     const sortOptions = ["vote_average.desc", "popularity.desc"];
-    const randomSort =
-        sortOptions[Math.floor(Math.random() * sortOptions.length)];
+    const randomSort = sortOptions[Math.floor(Math.random() * sortOptions.length)];
 
     carouselItems.value.push({
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         genre,
         sortBy: randomSort,
         isMovie,
@@ -60,62 +82,58 @@ const addCarouselItem = async () => {
     } else {
         usedTvGenres.value.add(genre.id);
     }
+
+    await nextTick();
 };
 
-// Initial population
-
-
-function loadMoreItems() {
-    for (let i = 0; i < 2; i++) {
-        addCarouselItem();
+const loadMoreItems = async (count: number = 2) => {
+    for (let i = 0; i < count; i++) {
+        await addCarouselItem();
     }
-}
+};
 
-function checkForMoreItems() {
-    const bottomOfWindow =
-        window.innerHeight + y.value >=
-        document.documentElement.scrollHeight - 98;
+const initializeCarousels = async () => {
+    if (hasInitialized.value || isInitializing.value || isLoading.value) return;
+    isInitializing.value = true;
+
+    // Wait for both genre sets to be available
+    if (!movieGenres.value?.genres || !tvGenres.value?.genres) {
+        isInitializing.value = false;
+        return;
+    }
+
+    await loadMoreItems(4);
+    hasInitialized.value = true;
+    isInitializing.value = false;
+};
+
+const checkForMoreItems = () => {
+    if (!hasInitialized.value || isInitializing.value) return;
+
+    const bottomOfWindow = window.innerHeight + y.value >= document.documentElement.scrollHeight - 98;
     if (bottomOfWindow) {
-        loadMoreItems();
+        loadMoreItems(2);
     }
-}
+};
 
+// Single initialization watcher
+watch(
+    [movieGenres, tvGenres],
+    () => {
+        if (movieGenres.value?.genres && tvGenres.value?.genres) {
+            initializeCarousels();
+        }
+    },
+    { immediate: true }
+);
+
+// Scroll watcher (no immediate - let initialization handle first load)
 watch(y, () => {
     nextTick().then(() => {
         checkForMoreItems();
     });
-}, {
-    immediate: true
 });
-
-watch(movieGenres, async () => {
-    for (let i = 0; i < 4; i++) {
-        addCarouselItem();
-        await nextTick();
-}
-});
-
-watch(usedMovieGenres, async () => {
-    if(usedMovieGenres.value.size < 2) {
-        await nextTick();
-        loadMoreItems();
-    }
-}, {
-    immediate: true
-});
-
-watch(usedTvGenres, async () => {
-    if(usedTvGenres.value.size < 2) {
-        await nextTick();
-        loadMoreItems();
-    }
-}, {
-    immediate: true
-});
-
-
 </script>
-
 <template>
     <div class="mt-2">
         <WatchTrendingAll />
