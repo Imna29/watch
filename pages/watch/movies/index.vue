@@ -65,7 +65,7 @@ watch(y, () => {
     immediate: true
 });
 
-watch(movieGenres, () => {
+onMounted(() => {
     for (let i = 0; i < 4; i++) {
     addCarouselItem();
 }
