@@ -33,7 +33,8 @@ const getRandomUnusedTvGenre = computed(() =>
     getRandomUnusedGenre(tvGenres.value?.genres || [], usedTvGenres.value),
 );
 
-const addCarouselItem = () => {
+const addCarouselItem = async () => {
+    await nextTick();
     const isMovie = carouselItems.value.length % 2 === 0;
     const genre = isMovie
         ? getRandomUnusedMovieGenre.value
@@ -80,7 +81,9 @@ function checkForMoreItems() {
 }
 
 watch(y, () => {
-    checkForMoreItems();
+    nextTick().then(() => {
+        checkForMoreItems();
+    });
 }, {
     immediate: true
 });
@@ -94,6 +97,7 @@ watch(movieGenres, async () => {
 
 watch(usedMovieGenres, async () => {
     if(usedMovieGenres.value.size < 2) {
+        await nextTick();
         loadMoreItems();
     }
 }, {
@@ -102,6 +106,7 @@ watch(usedMovieGenres, async () => {
 
 watch(usedTvGenres, async () => {
     if(usedTvGenres.value.size < 2) {
+        await nextTick();
         loadMoreItems();
     }
 }, {
