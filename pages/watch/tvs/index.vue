@@ -68,8 +68,9 @@ watch(y, () => {
 });
 
 
-onMounted(() => {
+watch(tvGenres, async () => {
     for (let i = 0; i < 4; i++) {
+    await nextTick();
     addCarouselItem();
 }
 });
