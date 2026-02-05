@@ -7,10 +7,12 @@
         <NuxtLayout>
             <NuxtPage :keepalive="true" />
         </NuxtLayout>
+        <Analytics />
     </div>
 </template>
 
 <script lang="ts" setup>
+import { Analytics } from '@vercel/analytics/nuxt';
 let swiperInitialized = false;
 const initializeSwiper = async () => {
     if (!swiperInitialized) {

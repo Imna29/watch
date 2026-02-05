@@ -21,11 +21,14 @@
     "@tanstack/vue-query": "^5.92.9",
     "@vee-validate/nuxt": "^4.15.1",
     "@vee-validate/zod": "^4.15.1",
+    "@vercel/analytics": "^1.6.1",
     "@vueuse/core": "^14.2.0",
     "better-auth": "^1.4.18",
     "defu": "^6.1.4",
+    "drizzle-orm": "^1.0.0-beta.14-a36c63d",
     "lucide-vue-next": "^0.563.0",
     "nuxt": "^4.3.0",
+    "pg": "^8.18.0",
     "pinia": "^3.0.4",
     "primeicons": "^7.0.0",
     "primevue": "^4.5.4",
@@ -35,14 +38,12 @@
     "vee-validate": "^4.15.1",
     "vue": "^3.5.27",
     "vue-router": "^5.0.2",
-    "zod": "^4.3.6",
-    "drizzle-orm": "^1.0.0-beta.14-a36c63d",
-    "pg": "^8.18.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@primevue/nuxt-module": "^4.5.4",
+    "@types/pg": "^8.11.10",
     "@vueuse/nuxt": "^14.2.0",
-    "drizzle-kit": "^1.0.0-beta.14-a36c63d",
-    "@types/pg": "^8.11.10"
+    "drizzle-kit": "^1.0.0-beta.14-a36c63d"
   }
 }
