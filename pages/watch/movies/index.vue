@@ -69,7 +69,7 @@ watch(y, () => {
 });
 
 watch(movieGenres, () => {
-    checkForMoreItems();
+    addCarouselItem();
 });
 </script>
 
