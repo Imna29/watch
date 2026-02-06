@@ -3,7 +3,7 @@ import type { H3Event } from "h3";
 
 export async function getAuthSession(event: H3Event) {
   return await auth.api.getSession({
-    headers: toWebRequest(event).headers,
+    headers: event.headers,
   });
 }
 
