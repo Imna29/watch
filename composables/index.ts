@@ -10,6 +10,7 @@ export {
   useCreatePlaylist,
   useDeletePlaylist,
   useAddToPlaylist,
+  useAddToSystemPlaylist,
   useDeleteFromPlaylist,
 } from './queries/usePlaylists'
 export { searchOptions, useSearch } from './queries/useSearch'
