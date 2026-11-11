@@ -47,7 +47,7 @@
     "@types/pg": "^8.23.1",
     "@vueuse/nuxt": "^15.0.0",
     "drizzle-kit": "1.0.0-rc.5",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^5.1.0",
     "vue-tsc": "^3.3.14"
   }
