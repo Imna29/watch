@@ -30,8 +30,14 @@ export const movieOptions = {
     }),
 }
 
-export function useMovie(id: MaybeRefOrGetter<number>) {
-  return useQuery(movieOptions.byId(id))
+export function useMovie(
+  id: MaybeRefOrGetter<number>,
+  options: { enabled?: MaybeRefOrGetter<boolean> } = {}
+) {
+  return useQuery({
+    ...movieOptions.byId(id),
+    enabled: computed(() => toValue(options.enabled) ?? true),
+  })
 }
 
 export function useMovieGenres() {

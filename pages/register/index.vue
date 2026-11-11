@@ -85,14 +85,14 @@ const [confirm, confirmAttrs] = defineField("confirm");
 
             <template #content>
                 <Form @submit="onRegisterSubmit()">
-                    <div class="text-sm text-">{{ errorRef }}</div>
+                    <div class="text-sm text-red-500">{{ errorRef }}</div>
 
                     <div class="grid gap-2">
                         <label for="username">
                             Username<span class="text-red-500">*</span>
                         </label>
                         <InputText id="username" v-model="username" type="text" />
-                        <span class="text-sm text-destructive">{{
+                        <span class="text-sm text-red-500">{{
                             errors.username
                             }}</span>
                     </div>
@@ -102,7 +102,7 @@ const [confirm, confirmAttrs] = defineField("confirm");
                             Email<span class="text-red-500">*</span>
                         </label>
                         <InputText id="email" v-model="email" type="email" />
-                        <span class="text-sm text-destructive">{{
+                        <span class="text-sm text-red-500">{{
                             errors.email
                             }}</span>
                     </div>
@@ -112,7 +112,7 @@ const [confirm, confirmAttrs] = defineField("confirm");
                             Password<span class="text-red-500">*</span>
                         </label>
                         <InputText id="password" v-model="password" type="password" />
-                        <span class="text-sm text-destructive">{{
+                        <span class="text-sm text-red-500">{{
                             errors.password
                             }}</span>
                     </div>
@@ -122,7 +122,7 @@ const [confirm, confirmAttrs] = defineField("confirm");
                             Confirm Password<span class="text-red-500">*</span>
                         </label>
                         <InputText id="confirm" v-model="confirm" type="password" />
-                        <span class="text-sm text-destructive">{{
+                        <span class="text-sm text-red-500">{{
                             errors.confirm
                             }}</span>
                     </div>

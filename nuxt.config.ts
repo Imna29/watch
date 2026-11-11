@@ -23,6 +23,11 @@ export default defineNuxtConfig({
     '/watch/**': { prerender: false, ssr: false },
     '/login/**': { prerender: false, ssr: false },
     '/register/**': { prerender: false, ssr: false },
+    '/api/watch/**': {
+      headers: {
+        'cache-control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+      },
+    },
     '/gpt/**': { prerender: false, ssr: false },
   },
 

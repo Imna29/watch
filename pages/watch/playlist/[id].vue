@@ -14,6 +14,16 @@ const toast = useToast();
 const id: string = useRoute().params.id.toString();
 
 const { data: playlist, isPending } = usePlaylistItems(id);
+// Each tile loads its own title details, so render in pages to bound the
+// number of simultaneous requests on long lists (History grows without limit).
+const PAGE_SIZE = 24;
+const visibleCount = ref(PAGE_SIZE);
+const visibleItems = computed(
+    () => playlist.value?.items.slice(0, visibleCount.value) ?? [],
+);
+const hasMoreItems = computed(
+    () => (playlist.value?.items.length ?? 0) > visibleCount.value,
+);
 const { mutate: deleteItems, isPending: isDeleting } = useDeleteFromPlaylist();
 
 const selectedItems = reactive(new Set<string>());
@@ -90,7 +100,7 @@ const deleteSelectedItems = async () => {
         </div>
 
         <div class="mt-4 flex flex-wrap gap-4">
-            <div v-for="playlistItem in playlist.items" :key="playlistItem.id" @click="toggleSelection(playlistItem.id)"
+            <div v-for="playlistItem in visibleItems" :key="playlistItem.id" @click="toggleSelection(playlistItem.id)"
                 :class="{
                     'border-2': selectedItems.has(playlistItem.id),
                     'rounded-lg': selectedItems.has(playlistItem.id),
@@ -100,6 +110,11 @@ const deleteSelectedItems = async () => {
                     v-if="playlistItem.contentType === 'MOVIE'"></WatchMovieIcon>
                 <WatchTvIcon class="md:w-[200px] w-[150px]" :tv-id="playlistItem.contentId" v-else></WatchTvIcon>
             </div>
+        </div>
+        <div v-if="hasMoreItems" class="mt-4 flex justify-center">
+            <Button severity="secondary" @click="visibleCount += PAGE_SIZE">
+                Show more
+            </Button>
         </div>
     </div>
 </template>

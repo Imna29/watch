@@ -37,8 +37,14 @@ export const tvOptions = {
     }),
 }
 
-export function useTvShow(id: MaybeRefOrGetter<number>) {
-  return useQuery(tvOptions.byId(id))
+export function useTvShow(
+  id: MaybeRefOrGetter<number>,
+  options: { enabled?: MaybeRefOrGetter<boolean> } = {}
+) {
+  return useQuery({
+    ...tvOptions.byId(id),
+    enabled: computed(() => toValue(options.enabled) ?? true),
+  })
 }
 
 export function useTvGenres() {
