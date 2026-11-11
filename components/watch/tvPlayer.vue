@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { TVShowDetails } from "~/models/apiModels/watch/TvModels";
+import { WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
 
 const isOpen = defineModel({
     type: Boolean,
@@ -12,7 +13,6 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const watchStore = useWatchStore();
 const { loggedIn } = useAuth();
 
 const iframe = ref<HTMLIFrameElement>();
@@ -48,15 +48,8 @@ const servers = [
     },
 ];
 
-const episodes = computedAsync(async () => {
-    console.log("Fetching episodes");
-    return (
-        await watchStore.watchRepo.getSeasonData(
-            id,
-            Number(selectedSeason.value),
-        )
-    ).episodes;
-}, []);
+const { data: seasonData } = useSeasonData(id, selectedSeason);
+const episodes = computed(() => seasonData.value?.episodes ?? []);
 
 const iframeSrc = asyncComputed(() => {
     switch (selectedSource.value) {
@@ -81,25 +74,28 @@ watch(selectedSeason, () => {
     selectedEpisode.value = 1;
 });
 
+const addToSystemPlaylist = useAddToSystemPlaylist();
+const { mutateAsync: addWatchedEpisode } = useAddWatchedEpisode();
+
 watch(
     [selectedEpisode, selectedSeason],
-    async (newValue) => {
-        if (loggedIn.value) {
-            const historyPlaylist = (
-                await watchStore.watchRepo.getAllPlaylists()
-            ).filter((playlist) => playlist.type === "HISTORY")[0];
-            watchStore.watchRepo.addToPlaylist(historyPlaylist.id, id, "TV_SHOW");
-            watchStore.watchRepo.addWatchedEpisode(
-                id,
-                Number(selectedSeason.value),
-                Number(selectedEpisode.value),
-            );
+    async () => {
+        if (!loggedIn.value) return;
+        try {
+            // Recording progress must never block or break playback.
+            await Promise.all([
+                addToSystemPlaylist(WatchPlaylistType.HISTORY, id, "TV_SHOW"),
+                addWatchedEpisode({
+                    tvId: id,
+                    seasonNumber: Number(selectedSeason.value),
+                    episodeNumber: Number(selectedEpisode.value),
+                }),
+            ]);
+        } catch (error) {
+            console.error("Failed to record watch progress", error);
         }
     },
-    {
-        immediate: true,
-        deep: true,
-    },
+    { immediate: true },
 );
 
 watch(

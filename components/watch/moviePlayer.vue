@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import { WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
+
 const isOpen = defineModel({
     type: Boolean,
 });
@@ -6,7 +8,6 @@ const isOpen = defineModel({
 const iframe = ref<HTMLIFrameElement>();
 const selectedSource = ref<string>("0");
 const id = Number(useRoute().params.id);
-const watchStore = useWatchStore();
 
 const servers = [
     {
@@ -40,7 +41,7 @@ const iframeSrc = computed(() => {
         case "0":
             return `https://vidlink.pro/movie/${id}`;
         case "1":
-            return `https://vidsrc.cc/v2/embed/movie/${id}}`;
+            return `https://vidsrc.cc/v2/embed/movie/${id}`;
         case "2":
             return `https://vidsrc.xyz/embed/movie/${id}`;
         case "3":
@@ -56,12 +57,15 @@ const iframeSrc = computed(() => {
 
 const { loggedIn } = useAuth();
 
-if (loggedIn.value) {
-    const historyPlaylist = (await watchStore.watchRepo.getAllPlaylists()).filter(
-        (playlist) => playlist.type === "HISTORY",
-    )[0];
-    watchStore.watchRepo.addToPlaylist(historyPlaylist.id, id, "MOVIE");
-}
+const addToSystemPlaylist = useAddToSystemPlaylist();
+
+onMounted(() => {
+    if (!loggedIn.value) return;
+    // Recording history must never block or break playback.
+    addToSystemPlaylist(WatchPlaylistType.HISTORY, id, "MOVIE").catch((error) => {
+        console.error("Failed to record watch history", error);
+    });
+});
 
 watch(
     iframeSrc,
