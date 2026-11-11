@@ -34,7 +34,7 @@ function handleFalse() {
 </script>
 
 <template>
-  <div class="fixed top-0 left-0 ease-in duration-300 h-1 bg-destructive w-0 z-30" :style="{ width: progress + '%' }"
+  <div class="fixed top-0 left-0 ease-in duration-300 h-1 bg-primary w-0 z-30" :style="{ width: progress + '%' }"
        v-if="progress>0"></div>
 </template>
 
