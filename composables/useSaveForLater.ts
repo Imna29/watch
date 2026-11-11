@@ -1,4 +1,4 @@
-import { WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
+import { WatchPlaylistItemType, WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
 
 export function useSaveForLater() {
   const toast = useToast();
@@ -8,7 +8,7 @@ export function useSaveForLater() {
   return async function saveForLater(
     title: string,
     id: number,
-    contentType: "MOVIE" | "TV_SHOW",
+    contentType: WatchPlaylistItemType,
   ) {
     if (!loggedIn.value) {
       toast.add({
@@ -24,7 +24,7 @@ export function useSaveForLater() {
       await addToSystemPlaylist(WatchPlaylistType.WATCH_LATER, id, contentType);
       toast.add({
         severity: "success",
-        summary: `${contentType === "MOVIE" ? "Movie" : "Show"} saved for later`,
+        summary: `${contentType === WatchPlaylistItemType.MOVIE ? "Movie" : "Show"} saved for later`,
         detail: `${title} has been saved for later`,
         life: 3000,
       });

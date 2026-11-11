@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { TVShowDetails } from "~/models/apiModels/watch/TvModels";
-import { WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
+import { WatchPlaylistItemType, WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
 
 const isOpen = defineModel({
     type: Boolean,
@@ -84,7 +84,7 @@ watch(
         try {
             // Recording progress must never block or break playback.
             await Promise.all([
-                addToSystemPlaylist(WatchPlaylistType.HISTORY, id, "TV_SHOW"),
+                addToSystemPlaylist(WatchPlaylistType.HISTORY, id, WatchPlaylistItemType.TV_SHOW),
                 addWatchedEpisode({
                     tvId: id,
                     seasonNumber: Number(selectedSeason.value),

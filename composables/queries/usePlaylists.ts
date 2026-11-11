@@ -1,7 +1,7 @@
 import { queryOptions, useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { WatchPlaylist, WatchPlaylistWithItems, WatchPlaylistType } from '~/models/apiModels/watch/Playlist'
+import type { WatchPlaylist, WatchPlaylistWithItems, WatchPlaylistType, WatchPlaylistItemType } from '~/models/apiModels/watch/Playlist'
 import { findPlaylistByType } from '~/utils/playlists'
 
 export const playlistOptions = {
@@ -141,7 +141,7 @@ export function useAddToSystemPlaylist() {
   return async function addToSystemPlaylist(
     type: WatchPlaylistType,
     contentId: number,
-    contentType: 'MOVIE' | 'TV_SHOW'
+    contentType: WatchPlaylistItemType
   ) {
     const playlists = await queryClient.fetchQuery({
       ...allPlaylists,

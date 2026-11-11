@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import WatchAddToPlaylist from "~/components/watch/addToPlaylist.vue";
 import { Star, ListPlus } from "@lucide/vue";
+import { WatchPlaylistItemType } from "~/models/apiModels/watch/Playlist";
 import type LastWatched from "~/models/apiModels/watch/LastWatched";
 
 definePageMeta({
@@ -92,7 +93,7 @@ function openAddToPlaylistDialog() {
                             saveForLater(
                                 tvData.name,
                                 tvData.id,
-                                'TV_SHOW',
+                                WatchPlaylistItemType.TV_SHOW,
                             )
                             ">
                             Save for Later
