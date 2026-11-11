@@ -3,22 +3,23 @@ import { db } from "../../../database/db";
 import { watchPlaylistItems } from "../../../database/watch-schema";
 
 export default defineEventHandler(async (event) => {
-  await requireAuthSession(event);
-  const playlistId = getRouterParam(event, "playlistId");
-  const body = await readBody(event);
-  const { itemIds } = body;
+  const session = await requireAuthSession(event);
+  const { playlistId } = await getValidatedRouterParams(event, playlistParamsSchema.parse);
+  const { itemIds } = await readValidatedBody(event, deletePlaylistItemsBodySchema.parse);
+  await requireOwnedPlaylist(playlistId, session.user.id);
 
-  if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+  if (itemIds.length === 0) {
     return { deletedCount: 0 };
   }
 
-  await db.delete(watchPlaylistItems)
+  const deleted = await db.delete(watchPlaylistItems)
     .where(
       and(
-        eq(watchPlaylistItems.playlistId, playlistId!),
+        eq(watchPlaylistItems.playlistId, playlistId),
         inArray(watchPlaylistItems.id, itemIds)
       )
-    );
+    )
+    .returning({ id: watchPlaylistItems.id });
 
-  return { deletedCount: itemIds.length };
+  return { deletedCount: deleted.length };
 });
