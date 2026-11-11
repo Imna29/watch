@@ -8,7 +8,7 @@ definePageMeta({
 });
 
 const id = Number(useRoute().params.id);
-const watchStore = useWatchStore();
+const saveForLater = useSaveForLater();
 const isPlayerOpen = ref<boolean>(false);
 const { loggedIn } = useAuth();
 
@@ -81,7 +81,7 @@ function openAddToPlaylistDialog() {
                     <div class="mt-4 flex gap-2 place-items-center">
                         <Button class="py-5 px-5 text-lg" @click="isPlayerOpen = !isPlayerOpen">Watch Now</Button>
                         <Button v-if="loggedIn" class="py-5 px-5 text-lg" severity="secondary" @click="
-                            watchStore.saveForLater(
+                            saveForLater(
                                 movieData.title,
                                 id,
                                 'MOVIE',

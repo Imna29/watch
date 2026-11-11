@@ -1,7 +1,8 @@
 import { queryOptions, useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { WatchPlaylist, WatchPlaylistWithItems } from '~/models/apiModels/watch/Playlist'
+import type { WatchPlaylist, WatchPlaylistWithItems, WatchPlaylistType } from '~/models/apiModels/watch/Playlist'
+import { findPlaylistByType } from '~/utils/playlists'
 
 export const playlistOptions = {
   all: () => {
@@ -123,4 +124,37 @@ export function useDeleteFromPlaylist() {
       })
     },
   })
+}
+
+/**
+ * Adds content to one of the user's built-in playlists (History, Watch Later,
+ * Favorites), looking the playlist id up through the query cache. Rejects if
+ * the user has no playlist of that type or the request fails — callers decide
+ * how to surface that.
+ */
+export function useAddToSystemPlaylist() {
+  const queryClient = useQueryClient()
+  const { mutateAsync: addToPlaylist } = useAddToPlaylist()
+
+  return async function addToSystemPlaylist(
+    type: WatchPlaylistType,
+    contentId: number,
+    contentType: 'MOVIE' | 'TV_SHOW'
+  ) {
+    const playlists = await queryClient.fetchQuery({
+      queryKey: queryKeys.playlists.all,
+      queryFn: async () => {
+        const { $apiClient } = useNuxtApp()
+        return watchRepository($apiClient).getAllPlaylists()
+      },
+      staleTime: 1000 * 60 * 5,
+    })
+
+    const playlist = findPlaylistByType(playlists, type)
+    if (!playlist) {
+      throw new Error(`No ${type} playlist exists for this user`)
+    }
+
+    await addToPlaylist({ playlistId: playlist.id, contentId, contentType })
+  }
 }
