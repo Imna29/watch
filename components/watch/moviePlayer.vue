@@ -80,7 +80,7 @@ watch(iframe, () => {
 
 <template>
     <Teleport to="body">
-        <div class="w-dvw h-dvh bg-secondary z-10 fixed top-0 left-0" v-if="isOpen">
+        <div class="w-dvw h-dvh bg-black z-10 fixed top-0 left-0" v-if="isOpen">
             <div class="absolute top-0 left-0 w-dvw z-100">
                 <div class="flex place-content-center gap-1 pt-2">
                     <Select v-model="selectedSource" :options="servers" class="rounded" default-value="0"
