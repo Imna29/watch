@@ -118,20 +118,3 @@ const deleteSelectedItems = async () => {
         </div>
     </div>
 </template>
-
-<style scoped>
-.btn {
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    font-weight: bold;
-}
-
-.btn-danger {
-    background-color: #e3342f;
-    color: white;
-}
-
-.btn-danger:hover {
-    background-color: #cc1f1a;
-}
-</style>
