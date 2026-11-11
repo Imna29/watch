@@ -135,6 +135,8 @@ export function useDeleteFromPlaylist() {
 export function useAddToSystemPlaylist() {
   const queryClient = useQueryClient()
   const { mutateAsync: addToPlaylist } = useAddToPlaylist()
+  // Built here, not in the returned function: it calls useAuth(), which needs setup context.
+  const allPlaylists = playlistOptions.all()
 
   return async function addToSystemPlaylist(
     type: WatchPlaylistType,
@@ -142,11 +144,7 @@ export function useAddToSystemPlaylist() {
     contentType: 'MOVIE' | 'TV_SHOW'
   ) {
     const playlists = await queryClient.fetchQuery({
-      queryKey: queryKeys.playlists.all,
-      queryFn: async () => {
-        const { $apiClient } = useNuxtApp()
-        return watchRepository($apiClient).getAllPlaylists()
-      },
+      ...allPlaylists,
       staleTime: 1000 * 60 * 5,
     })
 
