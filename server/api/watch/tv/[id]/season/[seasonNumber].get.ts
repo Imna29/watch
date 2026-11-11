@@ -1,5 +1,4 @@
 export default defineEventHandler(async (event) => {
-  const id = getRouterParam(event, "id");
-  const seasonNumber = getRouterParam(event, "seasonNumber");
+  const { id, seasonNumber } = await getValidatedRouterParams(event, seasonParamsSchema.parse);
   return await tmdbFetch(`tv/${id}/season/${seasonNumber}?language=en-US`);
 });
