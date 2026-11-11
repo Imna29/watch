@@ -3,8 +3,7 @@ import { db } from "../../database/db";
 
 export default defineEventHandler(async (event) => {
   const session = await requireAuthSession(event);
-  const body = await readBody(event);
-  const { tvId, seasonNumber, episodeNumber } = body;
+  const { tvId, seasonNumber, episodeNumber } = await readValidatedBody(event, watchedEpisodeBodySchema.parse);
 
   await db.insert(watchedEpisodes)
     .values({

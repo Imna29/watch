@@ -19,6 +19,13 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  if (genre_ids !== undefined && !genreIdsSchema.safeParse(genre_ids).success) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: "Invalid genre_ids parameter.",
+    });
+  }
+
   const queryParams = new URLSearchParams({
     sort_by,
     page: page.toString(),
