@@ -9,7 +9,7 @@ definePageMeta({
 });
 
 const id = Number(useRoute().params.id);
-const watchStore = useWatchStore();
+const saveForLater = useSaveForLater();
 const { loggedIn } = useAuth();
 const playerState = reactive({
     isOpen: false,
@@ -89,7 +89,7 @@ function openAddToPlaylistDialog() {
                                 : "Watch Now"
                         }}</Button>
                         <Button v-if="loggedIn" class="py-5 px-5 text-lg" severity="secondary" @click="
-                            watchStore.saveForLater(
+                            saveForLater(
                                 tvData.name,
                                 tvData.id,
                                 'TV_SHOW',
