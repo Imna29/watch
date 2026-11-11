@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, X, Menu } from "lucide-vue-next";
+import { Search, X, Menu } from "@lucide/vue";
 
 const watchStore = useWatchStore();
 const route = useRoute();

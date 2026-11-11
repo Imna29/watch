@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import WatchAddToPlaylist from "~/components/watch/addToPlaylist.vue";
-import { Star, ListPlus } from "lucide-vue-next";
+import { Star, ListPlus } from "@lucide/vue";
 import type LastWatched from "~/models/apiModels/watch/LastWatched";
 
 definePageMeta({

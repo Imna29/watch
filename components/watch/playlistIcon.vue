@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import type { WatchPlaylist } from "~/models/apiModels/watch/Playlist";
-import { ListVideo } from "lucide-vue-next";
+import { ListVideo } from "@lucide/vue";
 
 const props = defineProps<{
     playlist: WatchPlaylist;

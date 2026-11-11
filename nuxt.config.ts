@@ -9,6 +9,7 @@ export default defineNuxtConfig({
     "@vueuse/nuxt",
     "@nuxt/fonts",
     "@vee-validate/nuxt",
+    "@vercel/analytics/nuxt",
   ],
   ssr: false,
 

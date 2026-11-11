@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronsUpDown, X } from "lucide-vue-next";
+import { ChevronsUpDown, X } from "@lucide/vue";
 import type Genre from "~/models/apiModels/watch/Genre";
 
 const props = defineProps<{

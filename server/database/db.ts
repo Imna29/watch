@@ -1,6 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import * as schema from "./schema";
 import { relations } from "./relations";
 
 const { Pool } = pg;
@@ -17,4 +16,4 @@ const pool = new Pool({
   },
 });
 
-export const db = drizzle({ client: pool, schema, relations });
+export const db = drizzle({ client: pool, relations });

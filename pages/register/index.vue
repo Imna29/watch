@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { useForm, Form } from "vee-validate";
 import { toTypedSchema } from "@vee-validate/zod";
-import { ArrowLeft } from "lucide-vue-next";
+import { ArrowLeft } from "@lucide/vue";
 
 definePageMeta({
     auth: {

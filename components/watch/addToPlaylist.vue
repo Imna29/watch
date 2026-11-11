@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Check, LoaderCircle } from "lucide-vue-next";
+import { Plus, Check, LoaderCircle } from "@lucide/vue";
 
 const dialogRef: any = inject("dialogRef");
 const props = ref<{
