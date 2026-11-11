@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addPlaylistItemBodySchema,
   deletePlaylistItemsBodySchema,
+  discoverQuerySchema,
   genreIdsSchema,
   playlistParamsSchema,
   seasonParamsSchema,
@@ -79,6 +80,19 @@ describe("genreIdsSchema", () => {
     expect(genreIdsSchema.safeParse("28,12,16").success).toBe(true);
     for (const value of ["", "28,", ",28", "28|12", "abc", "28&page=2"]) {
       expect(genreIdsSchema.safeParse(value).success).toBe(false);
+    }
+  });
+});
+
+describe("discoverQuerySchema", () => {
+  it("allows genre_ids to be left out", () => {
+    expect(discoverQuerySchema.parse({ sort_by: "popularity.desc", page: "2" })).toEqual({});
+  });
+
+  it("validates genre_ids when it is present", () => {
+    expect(discoverQuerySchema.parse({ genre_ids: "28,12" })).toEqual({ genre_ids: "28,12" });
+    for (const genre_ids of ["", "28,", ["28", "12"]]) {
+      expect(discoverQuerySchema.safeParse({ genre_ids }).success).toBe(false);
     }
   });
 });

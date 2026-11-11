@@ -1,7 +1,7 @@
 export default defineEventHandler(async (event) => {
+  const { genre_ids } = await getValidatedQuery(event, discoverQuerySchema.parse);
   const query = getQuery(event);
-  
-  const genre_ids = query.genre_ids as string | undefined;
+
   const sort_by = (query.sort_by as string) || "popularity.desc";
   const page = parseInt((query.page as string) || "1");
 
@@ -16,13 +16,6 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: "Invalid page parameter.",
-    });
-  }
-
-  if (genre_ids !== undefined && !genreIdsSchema.safeParse(genre_ids).success) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: "Invalid genre_ids parameter.",
     });
   }
 

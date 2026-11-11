@@ -46,3 +46,9 @@ export const watchedEpisodeBodySchema = z.object({
 
 // Comma-separated TMDB genre ids, e.g. "28,12".
 export const genreIdsSchema = z.string().regex(/^\d+(,\d+)*$/).max(200);
+
+// Query of the discover routes. The client leaves genre_ids out when no genre
+// is selected; sort_by and page are checked in the handlers.
+export const discoverQuerySchema = z.object({
+  genre_ids: genreIdsSchema.optional(),
+});
