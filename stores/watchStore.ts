@@ -1,6 +1,4 @@
 export const useWatchStore = defineStore("watchStore", () => {
-  const { $apiClient } = useNuxtApp();
-  const watchRepo = watchRepository($apiClient);
   const searchQuery = ref<string>("");
   const isSearching = computed(() => searchQuery.value.length > 0);
   const router = useRouter();
@@ -42,7 +40,6 @@ export const useWatchStore = defineStore("watchStore", () => {
   }
 
   return {
-    watchRepo,
     searchQuery,
     isSearching,
     clearSearch,
