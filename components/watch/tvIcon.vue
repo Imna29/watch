@@ -6,17 +6,15 @@ const props = defineProps<{
     tvId?: number;
 }>();
 
-const watchStore = useWatchStore();
-
-const tvRef = ref<TVShow | TVShowDetails | undefined>(
-    props.tvShow || undefined,
-);
-
-onMounted(async () => {
-    if (props.tvId) {
-        tvRef.value = await watchStore.watchRepo.getTvById(props.tvId);
-    }
+// Only fetch when the caller gave an id instead of a full object. Going
+// through vue-query means the result is cached and shared with the detail page.
+const { data: fetchedTv } = useTvShow(() => props.tvId ?? 0, {
+    enabled: () => props.tvShow === undefined && props.tvId !== undefined,
 });
+
+const tvRef = computed<TVShow | TVShowDetails | undefined>(
+    () => props.tvShow ?? fetchedTv.value,
+);
 </script>
 
 <template>

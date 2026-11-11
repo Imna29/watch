@@ -6,15 +6,15 @@ const props = defineProps<{
     movieId?: number;
 }>();
 
-const watchStore = useWatchStore();
-
-const movieRef = ref<Movie | MovieDetails | undefined>(props.movie);
-
-onMounted(async () => {
-    if (props.movieId) {
-        movieRef.value = await watchStore.watchRepo.getMovieById(props.movieId);
-    }
+// Only fetch when the caller gave an id instead of a full object. Going
+// through vue-query means the result is cached and shared with the detail page.
+const { data: fetchedMovie } = useMovie(() => props.movieId ?? 0, {
+    enabled: () => props.movie === undefined && props.movieId !== undefined,
 });
+
+const movieRef = computed<Movie | MovieDetails | undefined>(
+    () => props.movie ?? fetchedMovie.value,
+);
 </script>
 
 <template>
