@@ -8,7 +8,10 @@ const { searchQuery } = storeToRefs(watchStore);
 // Debounce typing; vue-query keys each request by its query string, so a slow
 // response for an older query can never overwrite a newer one.
 const debouncedQuery = refDebounced(searchQuery, 200);
-const { data: searchResults, isFetching } = useSearch(debouncedQuery);
+const { data, isPlaceholderData, isFetching } = useSearch(debouncedQuery);
+// This component stays mounted, so without this a new search would briefly
+// show the results of the search that was cleared before it.
+const searchResults = useCurrentSearchResults(debouncedQuery, data, isPlaceholderData);
 
 const movies = computed(
     () =>
