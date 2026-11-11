@@ -2,11 +2,15 @@ import { z } from "zod";
 
 const PG_INT_MAX = 2_147_483_647;
 
-// TMDB ids arriving as route params (strings) — coerced to a positive integer.
-export const tmdbIdSchema = z.coerce.number().int().positive().max(PG_INT_MAX);
+// A TMDB id: a positive integer that fits a Postgres `integer` column.
+const tmdbId = z.number().int().positive().max(PG_INT_MAX);
 
 // Season 0 is "Specials" on TMDB, so 0 is valid.
-export const seasonNumberSchema = z.coerce.number().int().min(0).max(10_000);
+const seasonNumber = z.number().int().min(0).max(10_000);
+
+// Route params arrive as strings — coerced, then held to the same rules.
+export const tmdbIdSchema = z.coerce.number().pipe(tmdbId);
+export const seasonNumberSchema = z.coerce.number().pipe(seasonNumber);
 
 export const playlistParamsSchema = z.object({
   playlistId: z.string().uuid(),
@@ -26,7 +30,7 @@ export const tvIdParamsSchema = z.object({
 });
 
 export const addPlaylistItemBodySchema = z.object({
-  contentId: z.number().int().positive().max(PG_INT_MAX),
+  contentId: tmdbId,
   contentType: z.enum(["MOVIE", "TV_SHOW"]),
 });
 
@@ -35,10 +39,16 @@ export const deletePlaylistItemsBodySchema = z.object({
 });
 
 export const watchedEpisodeBodySchema = z.object({
-  tvId: z.number().int().positive().max(PG_INT_MAX),
-  seasonNumber: z.number().int().min(0).max(10_000),
+  tvId: tmdbId,
+  seasonNumber,
   episodeNumber: z.number().int().min(0).max(100_000),
 });
 
 // Comma-separated TMDB genre ids, e.g. "28,12".
 export const genreIdsSchema = z.string().regex(/^\d+(,\d+)*$/).max(200);
+
+// Query of the discover routes. The client leaves genre_ids out when no genre
+// is selected; sort_by and page are checked in the handlers.
+export const discoverQuerySchema = z.object({
+  genre_ids: genreIdsSchema.optional(),
+});

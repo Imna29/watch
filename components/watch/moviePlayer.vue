@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
+import { WatchPlaylistItemType, WatchPlaylistType } from "~/models/apiModels/watch/Playlist";
 
 const isOpen = defineModel({
     type: Boolean,
@@ -62,7 +62,7 @@ const addToSystemPlaylist = useAddToSystemPlaylist();
 onMounted(() => {
     if (!loggedIn.value) return;
     // Recording history must never block or break playback.
-    addToSystemPlaylist(WatchPlaylistType.HISTORY, id, "MOVIE").catch((error) => {
+    addToSystemPlaylist(WatchPlaylistType.HISTORY, id, WatchPlaylistItemType.MOVIE).catch((error) => {
         console.error("Failed to record watch history", error);
     });
 });

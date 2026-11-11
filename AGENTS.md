@@ -46,7 +46,7 @@ cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.
 
 ## Conventions
 - New client reads/writes go through vue-query composables, not direct
-  `watchRepo` calls from components.
+  `watchRepository($apiClient)` calls from components.
 - Server handlers call `requireAuthSession(event)` first when they touch user data.
 - Tests live in `tests/**` and run in plain Node: they can only import modules
   that do not depend on Nuxt auto-imports at runtime.

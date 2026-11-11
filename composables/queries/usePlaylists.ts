@@ -1,7 +1,7 @@
 import { queryOptions, useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { WatchPlaylist, WatchPlaylistWithItems, WatchPlaylistType } from '~/models/apiModels/watch/Playlist'
+import type { WatchPlaylist, WatchPlaylistWithItems, WatchPlaylistType, WatchPlaylistItemType } from '~/models/apiModels/watch/Playlist'
 import { findPlaylistByType } from '~/utils/playlists'
 
 export const playlistOptions = {
@@ -135,18 +135,16 @@ export function useDeleteFromPlaylist() {
 export function useAddToSystemPlaylist() {
   const queryClient = useQueryClient()
   const { mutateAsync: addToPlaylist } = useAddToPlaylist()
+  // Built here, not in the returned function: it calls useAuth(), which needs setup context.
+  const allPlaylists = playlistOptions.all()
 
   return async function addToSystemPlaylist(
     type: WatchPlaylistType,
     contentId: number,
-    contentType: 'MOVIE' | 'TV_SHOW'
+    contentType: WatchPlaylistItemType
   ) {
     const playlists = await queryClient.fetchQuery({
-      queryKey: queryKeys.playlists.all,
-      queryFn: async () => {
-        const { $apiClient } = useNuxtApp()
-        return watchRepository($apiClient).getAllPlaylists()
-      },
+      ...allPlaylists,
       staleTime: 1000 * 60 * 5,
     })
 
