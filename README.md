@@ -1,75 +1,25 @@
-# Nuxt 3 Minimal Starter
+# watch
 
-Look at the [Nuxt 3 documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+A Nuxt 4 single-page app for browsing movies and TV shows (TMDB metadata) with
+accounts, playlists and watched-episode tracking.
 
 ## Setup
 
-Make sure to install the dependencies:
+1. `bun install`
+2. Copy `.env.example` to `.env` and fill in every variable.
+3. `bun run dev` and open http://localhost:3000
 
-```bash
-# npm
-npm install
+## Commands
 
-# pnpm
-pnpm install
+| Purpose | Command |
+|---|---|
+| Dev server | `bun run dev` |
+| Unit tests | `bun run test` |
+| Typecheck | `bun run typecheck` |
+| Production build | `bun run build` |
+| Preview build | `bun run preview` |
 
-# yarn
-yarn install
+Database schema lives in `server/database/`; migrations in `drizzle/` are
+generated with `bun run db:generate` and applied with `bun run db:migrate`.
 
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
-npm run dev
-
-# pnpm
-pnpm run dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
-# npm
-npm run build
-
-# pnpm
-pnpm run build
-
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm run preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+See `AGENTS.md` for the project layout and conventions.
