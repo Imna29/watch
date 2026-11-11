@@ -63,7 +63,7 @@ async function loginWithCredentials() {
               </div>
               <InputText id="password" type="password" required v-model="password" />
             </div>
-            <div class="text-sm text-destructive" v-if="errorMessage">
+            <div class="text-sm text-red-500" v-if="errorMessage">
               {{ errorMessage }}
             </div>
             <Button type="submit" class="w-full">

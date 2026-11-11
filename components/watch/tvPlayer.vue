@@ -119,7 +119,7 @@ watch(iframe, () => {
 
 <template>
     <Teleport to="body">
-        <div class="w-dvw h-dvh bg-secondary z-10 fixed top-0 left-0">
+        <div class="w-dvw h-dvh bg-black z-10 fixed top-0 left-0">
             <div class="absolute top-0 w-fit right-2 z-100">
                 <div class="flex place-content-center gap-1 pt-2">
                     <Select v-model="selectedSeason" class="rounded p-2" :options="tvData.seasons"
