@@ -20,7 +20,7 @@ TMDB, with email/password accounts, playlists and watched-episode tracking.
 | Typecheck | `bun run typecheck` |
 | Production build | `bun run build` |
 
-Typecheck baseline: 3 pre-existing `error TS` lines. Do not increase it:
+Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
 
 `typescript` is pinned to 6.x on purpose: `vue-tsc` (used by `nuxt typecheck`)

@@ -4,7 +4,7 @@ import { watchedEpisodes } from "../../../database/watch-schema";
 
 export default defineEventHandler(async (event) => {
   const session = await requireAuthSession(event);
-  const tvId = parseInt(getRouterParam(event, "tvId")!);
+  const { tvId } = await getValidatedRouterParams(event, tvIdParamsSchema.parse);
 
   const [lastEpisodeWatched] = await db.select()
     .from(watchedEpisodes)

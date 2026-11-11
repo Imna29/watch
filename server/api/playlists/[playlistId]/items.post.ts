@@ -2,15 +2,14 @@ import { watchPlaylistItems } from "../../../database/watch-schema";
 import { db } from "../../../database/db";
 
 export default defineEventHandler(async (event) => {
-  await requireAuthSession(event);
-  const playlistId = getRouterParam(event, "playlistId");
-  const body = await readBody(event);
-
-  const { contentId, contentType } = body;
+  const session = await requireAuthSession(event);
+  const { playlistId } = await getValidatedRouterParams(event, playlistParamsSchema.parse);
+  const { contentId, contentType } = await readValidatedBody(event, addPlaylistItemBodySchema.parse);
+  await requireOwnedPlaylist(playlistId, session.user.id);
 
   await db.insert(watchPlaylistItems)
     .values({
-      playlistId: playlistId!,
+      playlistId,
       contentType,
       contentId,
       watchedAt: new Date(),
