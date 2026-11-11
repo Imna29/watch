@@ -50,4 +50,12 @@ describe("watchRepository", () => {
       body: JSON.stringify({ tvId: 1399, seasonNumber: 2, episodeNumber: 5 }),
     });
   });
+
+  it("passes the search term as an encoded query parameter", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.search("tom & jerry #1");
+    expect(fetch).toHaveBeenCalledWith("/watch/search", {
+      query: { s: "tom & jerry #1" },
+    });
+  });
 });

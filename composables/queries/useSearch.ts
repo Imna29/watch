@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from '@tanstack/vue-query'
+import { keepPreviousData, queryOptions, useQuery } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
 import type { SearchResponse } from '~/models/apiModels/watch/SearchResult'
@@ -12,6 +12,7 @@ export const searchOptions = {
         return watchRepository($apiClient).search(toValue(query))
       },
       enabled: computed(() => toValue(query).length > 0),
+      placeholderData: keepPreviousData,
     }),
 }
 

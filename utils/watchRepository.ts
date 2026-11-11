@@ -76,7 +76,7 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
     return fetch<SeasonData>(`/watch/tv/${tvId}/season/${seasonNumber}`);
   },
   async search(query: string) {
-    return fetch<SearchResponse>(`/watch/search?s=${query}`);
+    return fetch<SearchResponse>("/watch/search", { query: { s: query } });
   },
 
   // Playlists
