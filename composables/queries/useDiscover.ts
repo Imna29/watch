@@ -1,7 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { MovieResponse, TVShowsResponse } from '~/models/apiModels/watch/MovieModels'
 
 export const discoverOptions = {
   movies: (

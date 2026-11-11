@@ -11,7 +11,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
     "@lucide/vue": "^1.72.0",
@@ -44,6 +46,9 @@
     "@primevue/nuxt-module": "^4.5.5",
     "@types/pg": "^8.23.1",
     "@vueuse/nuxt": "^15.0.0",
-    "drizzle-kit": "1.0.0-rc.5"
+    "drizzle-kit": "1.0.0-rc.5",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.3.14"
   }
 }

@@ -1,7 +1,6 @@
 import { queryOptions, useQuery } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { TVShowDetails, TVShowsResponse, GenreResponse, SeasonData } from '~/models/apiModels/watch/TvModels'
 
 export const tvOptions = {
   byId: (id: MaybeRefOrGetter<number>) =>

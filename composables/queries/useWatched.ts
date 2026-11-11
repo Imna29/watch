@@ -1,7 +1,7 @@
 import { queryOptions, useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
-import type { WatchedEpisode, LastWatched } from '~/models/apiModels/watch/WatchedEpisode'
+import type WatchedEpisode from '~/models/apiModels/watch/WatchedEpisode'
 
 export const watchedOptions = {
   all: () => {
@@ -24,7 +24,7 @@ export const watchedOptions = {
         return watchRepository($apiClient).getWatchedEpisodes()
       },
       select: (data: WatchedEpisode[]) =>
-        data.filter((episode) => episode.tvId === toValue(tvId)),
+        data.filter((episode) => episode.tvShowId === toValue(tvId)),
       enabled: loggedIn,
     })
   },
