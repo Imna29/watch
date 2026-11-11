@@ -13,11 +13,6 @@ export default defineNuxtConfig({
   ],
   ssr: false,
 
-  runtimeConfig: {
-    public: {
-      apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL,
-    },
-  },
   routeRules: {
     '/': { redirect: { to: '/watch', statusCode: 301 } },
     '/watch/**': { prerender: false, ssr: false },
@@ -28,7 +23,6 @@ export default defineNuxtConfig({
         'cache-control': 'public, s-maxage=3600, stale-while-revalidate=86400',
       },
     },
-    '/gpt/**': { prerender: false, ssr: false },
   },
 
   css: ["primeicons/primeicons.css", "~/assets/main.css"],
