@@ -5,18 +5,15 @@ import type WatchedEpisode from '~/models/apiModels/watch/WatchedEpisode'
 
 export const watchedOptions = {
   all: () => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: queryKeys.watched.all,
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getWatchedEpisodes()
       },
-      enabled: loggedIn,
     })
   },
   byTvId: (tvId: MaybeRefOrGetter<number>) => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: computed(() => queryKeys.watched.byTvId(toValue(tvId))),
       queryFn: async () => {
@@ -25,18 +22,15 @@ export const watchedOptions = {
       },
       select: (data: WatchedEpisode[]) =>
         data.filter((episode) => episode.tvShowId === toValue(tvId)),
-      enabled: loggedIn,
     })
   },
   last: (tvId: MaybeRefOrGetter<number>) => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: computed(() => queryKeys.watched.last(toValue(tvId))),
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getLastWatchedEpisodes(toValue(tvId))
       },
-      enabled: loggedIn,
     })
   },
 }

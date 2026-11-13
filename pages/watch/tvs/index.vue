@@ -2,7 +2,6 @@
 definePageMeta({
     layout: "watch-layout",
     keepalive: true,
-    auth: false,
 });
 
 const { data: tvGenres, isPending: isLoadingGenres } = useTvGenres();

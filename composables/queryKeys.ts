@@ -31,4 +31,7 @@ export const queryKeys = {
     last: (tvId: number) => ['watched', tvId, 'last'] as const,
   },
   search: (query: string) => ['search', query] as const,
+  viewer: {
+    current: ['viewer'] as const,
+  },
 } as const

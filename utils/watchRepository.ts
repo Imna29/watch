@@ -17,6 +17,7 @@ import type {
   TVShowDetails,
 } from "~/models/apiModels/watch/TvModels";
 import type WatchedEpisode from "~/models/apiModels/watch/WatchedEpisode";
+import type { Viewer } from "~/models/Viewer";
 
 function buildDiscoverQuery(
   ids: number[],
@@ -122,6 +123,29 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
       method: "DELETE",
       body: JSON.stringify({ itemIds }),
     });
+  },
+
+  // Viewer sign-in
+  /** The Viewer signed in on this device, or null when it is signed out. */
+  async getViewer(): Promise<Viewer | null> {
+    try {
+      const { viewer } = await fetch<{ viewer: Viewer }>("/viewer");
+      return viewer;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 401) return null;
+      throw error;
+    }
+  },
+
+  async signIn(password: string) {
+    return fetch<{ viewer: Viewer }>("/sign-in", {
+      method: "POST",
+      body: { password },
+    });
+  },
+
+  async signOut() {
+    return fetch("/sign-out", { method: "POST" });
   },
 
   // Watched Episodes

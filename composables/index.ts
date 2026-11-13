@@ -22,3 +22,4 @@ export {
   useLastWatchedEpisode,
   useAddWatchedEpisode,
 } from './queries/useWatched'
+export { viewerOptions, useViewer, useSignIn, useSignOut } from './queries/useViewer'

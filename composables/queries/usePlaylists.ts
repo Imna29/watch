@@ -6,36 +6,30 @@ import { findPlaylistByType } from '~/utils/playlists'
 
 export const playlistOptions = {
   all: () => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: queryKeys.playlists.all,
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getAllPlaylists()
       },
-      enabled: loggedIn,
     })
   },
   byId: (id: MaybeRefOrGetter<string>) => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: computed(() => queryKeys.playlists.byId(toValue(id))),
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getPlaylist(toValue(id))
       },
-      enabled: loggedIn,
     })
   },
   items: (id: MaybeRefOrGetter<string>) => {
-    const { loggedIn } = useAuth()
     return queryOptions({
       queryKey: computed(() => queryKeys.playlists.items(toValue(id))),
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getPlaylistItems(toValue(id))
       },
-      enabled: loggedIn,
     })
   },
 }
@@ -127,15 +121,14 @@ export function useDeleteFromPlaylist() {
 }
 
 /**
- * Adds content to one of the user's built-in playlists (History, Watch Later,
+ * Adds content to one of the Viewer's built-in playlists (History, Watch Later,
  * Favorites), looking the playlist id up through the query cache. Rejects if
- * the user has no playlist of that type or the request fails — callers decide
+ * the Viewer has no playlist of that type or the request fails — callers decide
  * how to surface that.
  */
 export function useAddToSystemPlaylist() {
   const queryClient = useQueryClient()
   const { mutateAsync: addToPlaylist } = useAddToPlaylist()
-  // Built here, not in the returned function: it calls useAuth(), which needs setup context.
   const allPlaylists = playlistOptions.all()
 
   return async function addToSystemPlaylist(
@@ -150,7 +143,7 @@ export function useAddToSystemPlaylist() {
 
     const playlist = findPlaylistByType(playlists, type)
     if (!playlist) {
-      throw new Error(`No ${type} playlist exists for this user`)
+      throw new Error(`No ${type} playlist exists for this Viewer`)
     }
 
     await addToPlaylist({ playlistId: playlist.id, contentId, contentType })

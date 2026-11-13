@@ -2,7 +2,6 @@
 import WatchAddToPlaylist from "~/components/watch/addToPlaylist.vue";
 
 const activeIndex = ref<number>(0);
-const { loggedIn } = useAuth();
 
 const { data, isPending, error } = useTrendingAll('week');
 
@@ -54,7 +53,7 @@ function openDialog(id: number, contentType: "MOVIE" | "TV_SHOW") {
                             <NuxtLink :to="'/watch/movie/' + item.id">
                                 <Button class="text-xl p-6">Watch</Button>
                             </NuxtLink>
-                            <Button v-if="loggedIn" class="text-xl p-6 " severity="secondary" @click="openDialog(item.id, 'MOVIE')">Add
+                            <Button class="text-xl p-6 " severity="secondary" @click="openDialog(item.id, 'MOVIE')">Add
                                 to
                                 List</Button>
                         </div>
@@ -75,7 +74,7 @@ function openDialog(id: number, contentType: "MOVIE" | "TV_SHOW") {
                             <NuxtLink :to="'/watch/tv/' + item.id">
                                 <Button class="text-xl p-6">Watch</Button>
                             </NuxtLink>
-                            <Button v-if="loggedIn" class="text-xl p-6" severity="secondary" @click="openDialog(item.id, 'TV_SHOW')">Add
+                            <Button class="text-xl p-6" severity="secondary" @click="openDialog(item.id, 'TV_SHOW')">Add
                                 to
                                 List</Button>
                         </div>
