@@ -9,9 +9,14 @@ export default defineNuxtConfig({
     "@vueuse/nuxt",
     "@nuxt/fonts",
     "@vee-validate/nuxt",
-    "@vercel/analytics/nuxt",
   ],
   ssr: false,
+
+  // Self-hosted (ADR 0003): a standalone server that runs on Bun.
+  // Nitro's bun preset extends node-server and serves via Bun.serve.
+  nitro: {
+    preset: "bun",
+  },
 
   routeRules: {
     '/': { redirect: { to: '/watch', statusCode: 301 } },
