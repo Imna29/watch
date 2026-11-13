@@ -44,6 +44,12 @@ export const watchedEpisodeBodySchema = z.object({
   episodeNumber: z.number().int().min(0).max(100_000),
 });
 
+// The single password field of the sign-in page. Capped so a huge body cannot
+// make the password check expensive.
+export const signInBodySchema = z.object({
+  password: z.string().min(1).max(1024),
+});
+
 // Comma-separated TMDB genre ids, e.g. "28,12".
 export const genreIdsSchema = z.string().regex(/^\d+(,\d+)*$/).max(200);
 
