@@ -8,6 +8,8 @@ TMDB, with email/password accounts, playlists and watched-episode tracking.
 - Nuxt 4, Vue 3 `<script setup lang="ts">`, PrimeVue 4 components, Tailwind 4
 - Client data fetching: `@tanstack/vue-query` composables in `composables/queries/`
 - Server: Nitro routes in `server/api/`, Drizzle ORM + Postgres (`server/database/`)
+- Hosting: self-hosted (ADR 0003). Nitro's `bun` preset builds a standalone
+  server that runs on Bun (`Bun.serve`, so Nitro WebSockets use Bun's native support)
 - Auth: `better-auth` (`lib/auth.ts`, `server/utils/auth.ts`, `composables/auth.ts`)
 - Package manager: **bun** (do not use npm/pnpm/yarn; `bun.lock` is the lockfile)
 
@@ -19,6 +21,8 @@ TMDB, with email/password accounts, playlists and watched-episode tracking.
 | Unit tests | `bun run test` |
 | Typecheck | `bun run typecheck` |
 | Production build | `bun run build` |
+| Run the production build | `bun run start` |
+| Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
@@ -26,11 +30,17 @@ Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `typescript` is pinned to 6.x on purpose: `vue-tsc` (used by `nuxt typecheck`)
 cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.
 
+## Local database
+Development uses the local Docker Postgres from `compose.dev.yaml`. Its
+credentials match the `DB_*` values in `.env.example`; copy those into `.env`,
+start it (see Commands), then `bun run db:migrate`. `DB_CA` stays empty locally:
+the connection uses SSL only when `DB_CA` holds a CA certificate
+(`server/database/connection.ts`, shared by the app and `drizzle.config.ts`).
+
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
-- The database in `.env` may be production. Never run `db:push`, `db:migrate`
-  or `db:studio`, and do not create test users through the dev server, unless
-  the operator has confirmed the database is disposable.
+- Point `db:push`, `db:migrate`, `db:studio` and any test data at the local
+  Docker Postgres only.
 
 ## Layout
 - `pages/` routes; every page sets `definePageMeta({ auth: ... })` (see `middleware/auth.global.ts`)
