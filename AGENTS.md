@@ -51,3 +51,17 @@ cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.
 - Tests live in `tests/**` and run in plain Node: they can only import modules
   that do not depend on Nuxt auto-imports at runtime.
 - Commit messages: conventional commits (`fix: ...`, `chore: ...`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `Imna29/watch`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels, each named after its role (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
