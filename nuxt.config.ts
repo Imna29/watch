@@ -36,7 +36,9 @@ export default defineNuxtConfig({
     head: {
       htmlAttrs: {
         class: 'app-dark-mode'
-      }
+      },
+      // A private site: keep it out of search engines (with public/robots.txt).
+      meta: [{ name: 'robots', content: 'noindex, nofollow' }],
     }
   },
   primevue: {
