@@ -59,7 +59,8 @@ function openAddToPlaylistDialog() {
         <span>Loading movie...</span>
     </div>
     <div class="container" v-else-if="movieData">
-        <WatchMoviePlayer v-model="isPlayerOpen" v-if="isPlayerOpen"></WatchMoviePlayer>
+        <WatchPlayerShell v-if="isPlayerOpen" :content-type="WatchPlaylistItemType.MOVIE" :tmdb-id="id"
+            @close="isPlayerOpen = false"></WatchPlayerShell>
         <div class="relative left-1/2 right-1/2 ml-[-50vw]! mr-[-50vw]! w-dvw! m-0! p-0!" :style="backgroundStyle">
             <div class="overlay absolute inset-0"></div>
             <div class="container m-auto h-[700px] relative flex items-center">
