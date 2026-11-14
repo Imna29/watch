@@ -22,7 +22,9 @@
  * While the
  * device takes part in a Watch Party it shows the Watch Party player, as the
  * app's layout does: real party sync driving a fake Source player
- * (`device.partySync`, `device.player`).
+ * (`device.partySync`, `device.player`). The Viewer in front of it uses the
+ * Source's own controls through `device.player.controls` (play, pause,
+ * seek, setSpeed, setVolume).
  *
  * Watch Party scenarios run once per Syncable Source:
  *
@@ -32,7 +34,9 @@
  *   const giorgi = h.device("giorgi");
  *   const mariam = h.device("mariam", { player: { loadMs: 5 * SECOND } });
  *   ...
- *   expect(mariam.player?.position).toBeCloseTo(giorgi.player!.position, 1);
+ *   mariam.player!.controls.pause();
+ *   h.advance(SECOND);
+ *   expect(giorgi.player?.paused).toBe(true);
  * ```
  */
 import type { Viewer } from "../../../models/Viewer";

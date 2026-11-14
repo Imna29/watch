@@ -4,10 +4,11 @@
  * Framework-free; `composables/useWatchParty.ts` wraps it for Vue, and the
  * seam 1 harness drives it with a fake Source player.
  *
- * It loads the Watch Party's Title in its Source, tells the coordinator when
- * the player is ready, keeps the player where the shared state's anchor says
- * it should be, and exposes what the player shell shows over the player
- * (`PartySyncView`).
+ * It loads the Watch Party's Title (or episode) in its Source, tells the
+ * coordinator when the player is ready, keeps the player where the shared
+ * state's anchor says it should be, sends the Viewer's own play, pause, seek
+ * and speed changes on as intents (never the echoes of its own commands),
+ * and exposes what the player shell shows over the player (`PartySyncView`).
  */
 import { otherViewer, type Viewer } from "../../models/Viewer";
 import type { Playable } from "../../utils/sources";

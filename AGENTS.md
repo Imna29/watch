@@ -87,6 +87,13 @@ Each Viewer takes part from one active device, the newest they joined from.
 The coordinator handles an intent only from that device, unless
 `FROM_ANY_DEVICE` (`coordinator.ts`) lists it: list there an intent any
 device of a Viewer may send.
+Shared controls: party sync turns a Viewer's play, pause, seek or speed in
+the Source's own player into a `watchParty:playback` intent
+(`sharedControls.ts` on the server), and every command it gives the player
+is noted as an expected echo (`createEchoes` in `partySync.ts`), so the
+player's report of it is never sent back. A new command party sync gives
+must be noted the same way. Devices drop a state whose `seq` is older than
+one they have.
 The coordinator records History through the `HistoryPort` that
 `server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
 once per Syncable Source with an adapter: a new one needs a fake player that
