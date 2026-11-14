@@ -103,10 +103,17 @@ export function playableOf(party: Pick<WatchPartyState, "title" | "episode">): P
 /** How long a player may take to report a command; after that, the command is taken to have done nothing. */
 const ECHO_TIMEOUT_MS = 10_000;
 
-/** What the player reports when it carries out one of party sync's commands. */
+/** The most a seek is taken to last when aiming ahead by it (see `seekLagS`). */
+const MAX_SEEK_LAG_S = 5;
+
+/**
+ * What the player reports when it carries out one of party sync's commands.
+ * `followUp`: a seek meant to land in step with a playing Watch Party, which
+ * is made once more if it took so long that it landed behind.
+ */
 type Echo =
   | { type: "play" | "pause" }
-  | { type: "seeked"; position: number }
+  | { type: "seeked"; position: number; followUp: boolean }
   | { type: "ratechange"; rate: number };
 
 /** Commands that report on the same thing: a later one decides it. */
@@ -121,7 +128,7 @@ function channelOf(type: Echo["type"]) {
  * A report that matches is an echo, never sent on as the Viewer's change.
  */
 function createEchoes(clock: Clock) {
-  let expected: (Echo & { until: number })[] = [];
+  let expected: (Echo & { at: number; until: number })[] = [];
 
   function matches(echo: Echo, event: PlayerEvent) {
     if (echo.type !== event.type) return false;
@@ -134,23 +141,26 @@ function createEchoes(clock: Clock) {
 
   return {
     expect(echo: Echo) {
-      expected.push({ ...echo, until: clock.now() + ECHO_TIMEOUT_MS });
+      const now = clock.now();
+      expected.push({ ...echo, at: now, until: now + ECHO_TIMEOUT_MS });
     },
 
     /**
-     * Whether `event` echoes a command; null when it does not. The player
+     * The command `event` echoes; null when it echoes none. The player
      * reports in order, so commands on the same thing given before that one
      * will not be reported any more: they are forgotten too. `latest`: no
-     * later command on the same thing is still on its way.
+     * later command on the same thing is still on its way. `tookMs`: how
+     * long the player took to carry it out.
      */
-    heard(event: PlayerEvent): { latest: boolean } | null {
+    heard(event: PlayerEvent): { echo: Echo; latest: boolean; tookMs: number } | null {
       const now = clock.now();
       expected = expected.filter((echo) => echo.until > now);
       const index = expected.findIndex((echo) => matches(echo, event));
       if (index === -1) return null;
-      const channel = channelOf(expected[index]!.type);
-      expected = expected.filter((echo, i) => i > index || channelOf(echo.type) !== channel);
-      return { latest: !expected.some((echo) => channelOf(echo.type) === channel) };
+      const echo = expected[index]!;
+      const channel = channelOf(echo.type);
+      expected = expected.filter((other, i) => i > index || channelOf(other.type) !== channel);
+      return { echo, latest: !expected.some((other) => channelOf(other.type) === channel), tookMs: now - echo.at };
     },
 
     /** Whether a command that reports `type` is still on its way. */
@@ -193,6 +203,8 @@ export function createPartySync({
    */
   const player = { paused: true, position: 0, at: clock.now(), rate: 1, stalled: false };
   const echoes = createEchoes(clock);
+  /** How long this player's last seek took to carry out, in seconds: seeks aim that far ahead (`seekTo`). */
+  let seekLagS = 0;
   let countdownTimer: TimerId | null = null;
   /** What the frame has loaded: the Source and what it plays (see `load`). */
   let loaded: string | null = null;
@@ -273,14 +285,38 @@ export function createPartySync({
     return stoppedAtTheEnd;
   }
 
+  /**
+   * Seeks the player to `wanted.position`, where the shared state is now.
+   * While that plays on (at `rate`), the player stands still for as long as
+   * the seek takes, so it aims that much further ahead, by the last seek's
+   * time (`seekLagS`). A `followUp` seek that still lands behind is made
+   * once more (`landInStep`).
+   */
+  function seekTo(wanted: { position: number; playing: boolean }, rate: number, followUp = true) {
+    if (!adapter) return;
+    const position = wanted.playing ? wanted.position + seekLagS * rate : wanted.position;
+    adapter.seek(position);
+    echoes.expect({ type: "seeked", position, followUp: followUp && wanted.playing });
+    playerIsAt(position);
+  }
+
+  /**
+   * After a seek that took longer than `seekLagS` said: one that landed
+   * behind a playing Watch Party seeks again, aiming as far ahead as this
+   * one took. Never back: a player that landed ahead stays there.
+   */
+  function landInStep() {
+    const party = live();
+    if (!party || view.player !== "ready") return;
+    const wanted = wantedNow(party);
+    if (wanted.playing && playerPosition() < wanted.position - SEEK_TOLERANCE_S) seekTo(wanted, party.anchor.rate, false);
+  }
+
   /** Moves the player to where the shared state is now (also when the coordinator says it drifted). */
   function seekToParty(party: WatchPartyState) {
-    if (!adapter) return;
-    const position = anchorAt(party.anchor, client.serverNow()).position;
-    if (staysAtTheEnd(position)) return;
-    adapter.seek(position);
-    echoes.expect({ type: "seeked", position });
-    playerIsAt(position);
+    const wanted = anchorAt(party.anchor, client.serverNow());
+    if (staysAtTheEnd(wanted.position)) return;
+    seekTo(wanted, party.anchor.rate);
   }
 
   /**
@@ -308,11 +344,7 @@ export function createPartySync({
     if (!adapter || view.player !== "ready" || !party) return;
     const wanted = wantedNow(party);
     if (staysAtTheEnd(wanted.position)) return;
-    if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) {
-      adapter.seek(wanted.position);
-      echoes.expect({ type: "seeked", position: wanted.position });
-      playerIsAt(wanted.position);
-    }
+    if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) seekTo(wanted, party.anchor.rate);
     if (wanted.playing && player.paused && !view.clickToResume) {
       adapter.play();
       echoes.expect({ type: "play" });
@@ -357,7 +389,12 @@ export function createPartySync({
         return heardPlayback(event);
       case "seeked": {
         playerIsAt(event.position);
-        if (echoes.heard(event)) return;
+        const heard = echoes.heard(event);
+        if (heard) {
+          seekLagS = Math.min(MAX_SEEK_LAG_S, heard.tookMs / 1000);
+          if (heard.latest && heard.echo.type === "seeked" && heard.echo.followUp) landInStep();
+          return;
+        }
         if (!sentAsViewerChange(event)) apply();
         return;
       }

@@ -127,13 +127,22 @@ Staying in step (`drift.ts` on the server):
 - Party sync reports its player's position on the server's clock every
   second (`watchParty:position`). It skips the report while a seek is on its
   way and at the end of the Title.
-- Under 0.5 s off is left alone. Further off, the coordinator tells that
-  device to catch up (`watchParty:catchUp`).
-- More than 2 s behind, or `stalled`, the Watch Party goes to the `waiting`
-  phase, frozen where it was. `stalled` means no time update for 2 s, or a
-  play command the browser refused, which shows "Click to resume". The Viewer
-  who fell behind plays on up to the frozen point; once every player is
-  there, all start again at one moment just ahead.
+- Drift is the spread between the two players' latest reports (each one's
+  offset from the anchor at its report's time), never one player against
+  the anchor, and no player is rewound to correct it. Under 0.5 s apart is
+  left alone. Up to 2 s, the one behind is told to catch up
+  (`watchParty:catchUp`); when the one ahead is off the anchor, the anchor
+  moves to it instead and the one behind follows. Its reports from before
+  the catch-up could reach it are ignored.
+- A seek party sync gives aims ahead by how long the player's last seek took
+  (`seekTo` in `partySync.ts`), and one that still lands behind a playing
+  Watch Party is made once more, so slow seeks converge.
+- More than 2 s apart, `stalled`, or a third catch-up within 30 s: the Watch
+  Party goes to the `waiting` phase, frozen where the player furthest ahead
+  is. `stalled` means no time update for 2 s, or a play command the browser
+  refused, which shows "Click to resume". The Viewer who fell behind plays on
+  up to the frozen point; once every player is there, all start again at one
+  moment just ahead.
 - An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
   for the same way, from where it left. A waiting invite ends instead
   ("gone").

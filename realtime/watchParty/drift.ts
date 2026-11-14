@@ -4,15 +4,19 @@
  * (`./partySync.ts`) reports where each player is, every
  * `POSITION_REPORT_MS`, and follows what this decides.
  *
- * Each report is compared with where the shared state's anchor says the
- * player should be at the report's server time:
- * - under `DRIFT_IGNORED_S` off, nothing happens;
- * - further off, the device is told to catch up (`watchParty:catchUp`): its
- *   player moves to where the shared state is now;
- * - more than `DRIFT_LIMIT_S` behind, or stalled: every player pauses where
- *   the Watch Party is, in the "waiting" phase. The Viewer who fell behind
- *   plays on up to there, so nobody misses anything, and once every player
- *   is there, all of them start again at one moment, `RESUME_DELAY_MS` on.
+ * Drift is the spread between the two players, by their latest reports on
+ * the server's clock (each one as far ahead of the shared state's anchor as
+ * it was at its report's time). Nobody is ever rewound to correct it:
+ * - under `DRIFT_IGNORED_S` apart, nothing happens;
+ * - up to `DRIFT_LIMIT_S` apart, the player behind moves forward to the one
+ *   ahead: it is told to catch up (`watchParty:catchUp`) to where the shared
+ *   state is now. When the player ahead is off the shared state, the shared
+ *   state moves to it instead (re-anchored), and the player behind follows;
+ * - further apart, or stalled, or when catching up keeps failing: every
+ *   player pauses where the one furthest ahead is, in the "waiting" phase.
+ *   The Viewer who fell behind plays on up to there, so nobody misses
+ *   anything, and once every player is there, all of them start again at
+ *   one moment, `RESUME_DELAY_MS` on.
  *
  * A Viewer whose active device has been disconnected for
  * `DISCONNECT_GRACE_MS` is waited for the same way, from where the Watch
@@ -28,10 +32,10 @@ import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPar
 /** How often party sync reports where its player is. */
 export const POSITION_REPORT_MS = 1000;
 
-/** A player this close to the shared state is in step; further off, it is moved. */
+/** Players this close together are in step; further apart, the one behind is moved forward. */
 export const DRIFT_IGNORED_S = 0.5;
 
-/** A player further behind than this makes everyone wait for it. */
+/** Players further apart than this make everyone wait for the one behind. */
 export const DRIFT_LIMIT_S = 2;
 
 /**
@@ -47,8 +51,19 @@ export const RESUME_DELAY_MS = 1000;
  */
 export const DISCONNECT_GRACE_MS = 5000;
 
-/** After telling a device to catch up, give it this long before telling it again. */
-const CATCH_UP_COOLDOWN_MS = 3000;
+/**
+ * After telling a device to catch up, its reports from before it could have
+ * done so (sent before the message reached it) are ignored for this long.
+ * It sends none while its player seeks.
+ */
+const CATCH_UP_SETTLE_MS = POSITION_REPORT_MS;
+
+/** A Viewer whose player needed this many catch-ups within `CATCH_UP_WINDOW_MS` is waited for instead. */
+const MAX_CATCH_UPS = 3;
+const CATCH_UP_WINDOW_MS = 30_000;
+
+/** A report older than this no longer says where its player is. */
+const REPORT_FRESH_MS = 3 * POSITION_REPORT_MS;
 
 /** No Title runs longer than a day. */
 const MAX_POSITION_S = 24 * 3600;
@@ -77,33 +92,73 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
   const reports = new Map<Viewer, PositionMessage & { device: DeviceId }>();
   /** When each device was last told to catch up. */
   const caughtUpAt = new Map<DeviceId, number>();
+  /** When each Viewer's player was lately moved forward to catch up (see `MAX_CATCH_UPS`). */
+  const catchUps = new Map<Viewer, number[]>();
   /** When each active device that is not connected went away. */
   const awaySince = new Map<DeviceId, number>();
   /** What a waiting Watch Party goes back to. */
   let resumeTo: "playing" | "paused" = "playing";
 
-  function catchUp(device: Device, current: WatchPartyState) {
-    const last = caughtUpAt.get(device.id);
-    if (last !== undefined && context.now() - last < CATCH_UP_COOLDOWN_MS) return;
-    caughtUpAt.set(device.id, context.now());
-    context.send(device.id, { type: "watchParty:catchUp", partyId: current.id, seq: current.seq });
+  /** `viewer`'s latest report, while it still says where their active device's player is. */
+  function reportOf(viewer: Viewer, current: WatchPartyState) {
+    const report = reports.get(viewer);
+    if (!report || report.device !== current.activeDevices[viewer] || report.seq !== current.seq) return null;
+    return context.now() - report.serverTime <= REPORT_FRESH_MS ? report : null;
+  }
+
+  /** How far ahead of the shared state `report`'s player was (negative: behind), at the report's time. */
+  function offsetOf(report: PositionMessage, current: WatchPartyState) {
+    return report.position - anchorAt(current.anchor, report.serverTime).position;
   }
 
   /**
-   * Pauses every player where the Watch Party was at server time `at`,
-   * until `viewer`'s player is there too.
+   * Where `viewer`'s player is now, by their latest report (a stalled player
+   * stands still); where the shared state is, when they have none.
    */
-  function wait(current: WatchPartyState, viewer: Viewer, reason: WaitingReason, at = context.now()) {
+  function positionNow(viewer: Viewer, current: WatchPartyState) {
+    const report = reportOf(viewer, current);
+    if (report?.stalled) return report.position;
+    const shared = anchorAt(current.anchor, context.now()).position;
+    return report ? shared + offsetOf(report, current) : shared;
+  }
+
+  /** Where the player furthest ahead is now: where a Watch Party that waits for the others waits, so nobody is rewound. */
+  function furthestAhead(current: WatchPartyState) {
+    return Math.max(...VIEWERS.map((viewer) => positionNow(viewer, current)));
+  }
+
+  /** Whether `viewer`'s player needed so many catch-ups lately that catching up does not work for it. */
+  function catchingUpFails(viewer: Viewer) {
+    const recent = (catchUps.get(viewer) ?? []).filter((at) => context.now() - at < CATCH_UP_WINDOW_MS);
+    catchUps.set(viewer, recent);
+    return recent.length >= MAX_CATCH_UPS;
+  }
+
+  /**
+   * Moves `viewer`'s player forward to the other player, which is
+   * `leaderOffset` seconds off the shared state (negative: behind it).
+   */
+  function catchUp(current: WatchPartyState, viewer: Viewer, leaderOffset: number) {
+    catchUps.set(viewer, [...(catchUps.get(viewer) ?? []), context.now()]);
+    if (Math.abs(leaderOffset) > DRIFT_IGNORED_S) {
+      // The shared state moves to the player ahead; the one behind follows it there.
+      const position = anchorAt(current.anchor, context.now()).position + leaderOffset;
+      publish({ ...current, anchor: { ...current.anchor, position, serverTime: context.now() } });
+      return;
+    }
+    const device = current.activeDevices[viewer]!;
+    caughtUpAt.set(device, context.now());
+    reports.delete(viewer);
+    context.send(device, { type: "watchParty:catchUp", partyId: current.id, seq: current.seq });
+  }
+
+  /** Pauses every player at `position`, until `viewer`'s player is there too. */
+  function wait(current: WatchPartyState, viewer: Viewer, reason: WaitingReason, position: number) {
     if (current.phase.name === "playing" || current.phase.name === "paused") resumeTo = current.phase.name;
     publish({
       ...current,
       phase: { name: "waiting", viewer, reason },
-      anchor: {
-        ...current.anchor,
-        position: anchorAt(current.anchor, at).position,
-        serverTime: context.now(),
-        playing: false,
-      },
+      anchor: { ...current.anchor, position, serverTime: context.now(), playing: false },
     });
   }
 
@@ -111,8 +166,10 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
   function gone(current: WatchPartyState, viewer: Viewer, since: number) {
     const { phase } = current;
     if (phase.name === "inviting" && viewer === current.starter) end("gone", viewer);
-    else if (phase.name === "playing" || phase.name === "paused") wait(current, viewer, "disconnected", since);
-    else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
+    else if (phase.name === "playing" || phase.name === "paused") {
+      // From where the Watch Party was when they went: they miss nothing while they are gone.
+      wait(current, viewer, "disconnected", anchorAt(current.anchor, since).position);
+    } else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
       publish({ ...current, phase: { name: "waiting", viewer, reason: "disconnected" } });
     }
   }
@@ -139,19 +196,38 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
     });
   }
 
+  /** Keeps the players of a playing Watch Party together, after `viewer` reported. */
+  function keepTogether(current: WatchPartyState, viewer: Viewer) {
+    if (reportOf(viewer, current)?.stalled) return wait(current, viewer, "behind", furthestAhead(current));
+    const offsets: PlayerOffset[] = [];
+    for (const each of VIEWERS) {
+      const report = reportOf(each, current);
+      // Both players must say where they are, and neither may stand still.
+      if (!report || report.stalled) return;
+      offsets.push({ viewer: each, offset: offsetOf(report, current) });
+    }
+    const [behind, ahead] = offsets.sort((a, b) => a.offset - b.offset) as [PlayerOffset, PlayerOffset];
+    const spread = ahead.offset - behind.offset;
+    if (spread <= DRIFT_IGNORED_S) return;
+    if (spread > DRIFT_LIMIT_S || catchingUpFails(behind.viewer)) {
+      return wait(current, behind.viewer, "behind", furthestAhead(current));
+    }
+    catchUp(current, behind.viewer, ahead.offset);
+  }
+
   return {
     /** A position report from the active device `from` (the coordinator checks that). */
     reported(from: Device, report: PositionMessage) {
       const current = party();
-      // A report about an older shared state says nothing about this one.
+      // A report about an older shared state says nothing about this one,
       if (!current || report.partyId !== current.id || report.seq !== current.seq) return;
+      // nor does one sent before the device could carry out the catch-up it was told.
+      const toldAt = caughtUpAt.get(from.id);
+      if (toldAt !== undefined && report.serverTime < toldAt + CATCH_UP_SETTLE_MS) return;
       reports.set(from.viewer, { ...report, device: from.id });
       const phase = current.phase.name;
       if (phase === "waiting") return resumeWhenAllThere(current);
-      if (phase !== "playing" && phase !== "paused") return;
-      const behind = anchorAt(current.anchor, report.serverTime).position - report.position;
-      if (phase === "playing" && (report.stalled || behind > DRIFT_LIMIT_S)) wait(current, from.viewer, "behind");
-      else if (Math.abs(behind) > DRIFT_IGNORED_S) catchUp(from, current);
+      if (phase === "playing") return keepTogether(current, from.viewer);
     },
 
     /**
@@ -194,3 +270,9 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
 }
 
 type WaitingReason = Extract<WatchPartyState["phase"], { name: "waiting" }>["reason"];
+
+interface PlayerOffset {
+  viewer: Viewer;
+  /** How far ahead of the shared state the Viewer's player is (negative: behind it). */
+  offset: number;
+}
