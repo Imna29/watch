@@ -391,9 +391,25 @@ describe.each(syncableSourcesUnderTest())("a Watch Party on %s", (source) => {
       expect(giorgi.partySync?.view).toMatchObject({ gettingReady: true, countdown: null });
     });
 
+    it("gets ready even when the browser does not let it start on its own", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi", { player: { noAutoplay: true } });
+      const mariam = h.device("mariam", { player: { noAutoplay: true } });
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      expect(giorgi.partySync?.view.player).toBe("ready");
+
+      mariam.watchParty.join();
+      h.advance(10 * SECOND);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    });
+
     it("is reported as failed when it does not load the Title in time", () => {
       const h = setUp();
-      const giorgi = h.device("giorgi", { player: { unavailable: true } });
+      const giorgi = h.device("giorgi", { player: { hangs: true } });
       h.device("mariam");
       h.advance(SECOND);
       giorgi.watchParty.start(DUNE, null);
@@ -402,6 +418,18 @@ describe.each(syncableSourcesUnderTest())("a Watch Party on %s", (source) => {
       expect(giorgi.partySync?.view.player).toBe("loading");
       h.advance(20 * SECOND);
       expect(giorgi.partySync?.view.player).toBe("failed");
+    });
+
+    it("is reported as failed when no server of the Source has the Title", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi", { player: { unavailable: true } });
+      h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+
+      h.advance(25 * SECOND);
+      expect(giorgi.partySync?.view.player).toBe("failed");
+      expect(giorgi.player?.ready).toBe(false);
     });
   });
 
