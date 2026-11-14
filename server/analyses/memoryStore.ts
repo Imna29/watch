@@ -25,5 +25,11 @@ export function createMemoryAnalysisStore(): AnalysisStore {
       byMovie.set(movieId, analysis);
       return { ...analysis };
     },
+    async removeUnlessGraded(movieId) {
+      const existing = byMovie.get(movieId);
+      if (!existing || existing.grade !== null) return null;
+      byMovie.delete(movieId);
+      return { ...existing };
+    },
   };
 }
