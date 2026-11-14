@@ -12,6 +12,9 @@ export function createMemoryAnalysisStore(): AnalysisStore {
     async all() {
       return [...byMovie.values()].map((analysis) => ({ ...analysis }));
     },
+    async countUngraded() {
+      return [...byMovie.values()].filter((analysis) => analysis.grade === null).length;
+    },
     async writeUnlessGraded(movieId, text, at) {
       const existing = byMovie.get(movieId);
       if (existing && existing.grade !== null) return null;

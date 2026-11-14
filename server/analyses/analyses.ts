@@ -29,6 +29,8 @@ export interface AnalysisStore {
   find(movieId: number): Promise<Analysis | null>;
   /** Every movie's Analysis, in any order. */
   all(): Promise<Analysis[]>;
+  /** How many Analyses are ungraded. */
+  countUngraded(): Promise<number>;
   /**
    * Gives the movie an Analysis with `text`, submitted and edited `at`, or,
    * when it has an ungraded one, replaces its text and edited time. Returns it
@@ -121,6 +123,15 @@ export function createAnalyses({ store, now = Date.now }: AnalysesOptions) {
     async list(_viewer: Viewer): Promise<AnalysisList> {
       const all = await store.all();
       return { analyses: all.sort(inListOrder), average: averageGrade(all) };
+    },
+
+    /**
+     * How many Analyses wait for a Grade: the ungraded ones for the grader,
+     * zero for anyone else, who has nothing to grade.
+     */
+    async toGrade(viewer: Viewer): Promise<number> {
+      if (viewer !== ANALYSIS_GRADER) return 0;
+      return store.countUngraded();
     },
   };
 }
