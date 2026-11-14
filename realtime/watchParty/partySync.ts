@@ -22,7 +22,7 @@ import {
   type WatchPartyChange,
   type WatchPartyState,
 } from "./protocol";
-import type { PlayerEvent, PlayerFrame, SyncableSourceAdapter } from "./sources/adapter";
+import { sourceFailed, type PlayerEvent, type PlayerFrame, type SyncableSourceAdapter } from "./sources/adapter";
 import { hasAdapter, SYNCABLE_SOURCE_ADAPTERS } from "./sources";
 
 /** A player this close to where it should be is left alone; further off, it is moved. */
@@ -245,7 +245,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
         playerIsAt(event.position);
         return;
       case "error":
-        if (event.reason === "not-ready") setView({ player: "failed" });
+        if (sourceFailed(event)) setView({ player: "failed" });
         return;
     }
   }

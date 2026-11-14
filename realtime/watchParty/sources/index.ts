@@ -6,9 +6,11 @@
 import { SOURCES, type SourceId } from "../../../utils/sources";
 import type { AdapterFactory } from "./adapter";
 import { createCineSrcAdapter } from "./cinesrc";
+import { createVidFastAdapter } from "./vidfast";
 
 export const SYNCABLE_SOURCE_ADAPTERS = {
   cinesrc: createCineSrcAdapter,
+  vidfast: createVidFastAdapter,
 } satisfies Partial<Record<SourceId, AdapterFactory>>;
 
 export type AdaptedSourceId = keyof typeof SYNCABLE_SOURCE_ADAPTERS;

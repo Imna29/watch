@@ -39,12 +39,18 @@ export type PlayerEvent =
   | { type: "status"; position: number; paused: boolean }
   /**
    * The Source failed: `not-ready` when no "ready" arrived in time (the
-   * Source does not have the Title, or is down), `playback` when the player
-   * reported an error.
+   * Source does not have the Title, or is down), `unavailable` when the
+   * player said no server of the Source has the Title, `playback` when the
+   * player reported an error.
    */
-  | { type: "error"; reason: "not-ready" | "playback"; message: string };
+  | { type: "error"; reason: "not-ready" | "unavailable" | "playback"; message: string };
 
 export type PlayerEventType = PlayerEvent["type"];
+
+/** Whether `event` says the Source could not load the Title, so the Watch Party needs another Source. */
+export function sourceFailed(event: PlayerEvent): boolean {
+  return event.type === "error" && event.reason !== "playback";
+}
 
 export interface SyncableSourceAdapter {
   readonly source: Source;
@@ -87,7 +93,12 @@ export interface SourceLink {
   load(url: string): void;
   /** Posts a command to the current document; dropped until it is ready, as the players drop them. */
   post(message: unknown): void;
-  /** Reports `event` to the adapter's listeners; "ready" also marks the document ready. */
+  /** Posts to the current document even before it is ready: asking a player that never says it is. */
+  probe(message: unknown): void;
+  /**
+   * Reports `event` to the adapter's listeners; "ready" also marks the
+   * document ready, and it or the Source failing ends the wait for it.
+   */
   emit(event: PlayerEvent): void;
   on(listener: (event: PlayerEvent) => void): () => void;
   destroy(): void;
@@ -137,11 +148,13 @@ export function createSourceLink(
       if (ready && origin) frame.post(message, origin);
     },
 
+    probe(message) {
+      if (origin) frame.post(message, origin);
+    },
+
     emit(event) {
-      if (event.type === "ready") {
-        ready = true;
-        clearReadyTimer();
-      }
+      if (event.type === "ready") ready = true;
+      if (event.type === "ready" || sourceFailed(event)) clearReadyTimer();
       for (const listener of [...listeners]) listener(event);
     },
 
