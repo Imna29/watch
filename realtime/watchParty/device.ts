@@ -8,6 +8,7 @@ import type { Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
 import type { DeviceId } from "../connection/protocol";
 import type { DeviceClient } from "../deviceClient";
+import { createListeners } from "../listeners";
 import type { TitleRef } from "../presence/protocol";
 import type { Episode, PlaybackChange, PositionMessage, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
@@ -132,7 +133,7 @@ export interface DeviceWatchParty {
 }
 
 export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   let party: WatchPartyState | null = null;
   let ended: EndedNotice | null = null;
   /** What "Watch together" last asked for. */
@@ -153,7 +154,7 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
   let left: LeftNotice | null = null;
 
   function changed() {
-    for (const listener of [...listeners]) listener();
+    listeners.notify();
   }
 
   function me() {
@@ -400,9 +401,6 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       client.send({ type: "watchParty:source", partyId: current.id, source });
     },
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: listeners.subscribe,
   };
 }

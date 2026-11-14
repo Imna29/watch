@@ -44,19 +44,8 @@ export function useWatchParty() {
     choice: watchParty.choice,
     ended: watchParty.ended,
   });
-  const state = shallowRef(read());
-  const update = () => {
-    state.value = read();
-  };
-  const stopParty = watchParty.subscribe(update);
-  const stopStatus = client.onStatus(update);
-  onScopeDispose(() => {
-    stopParty();
-    stopStatus();
-  });
-
   return {
-    state: shallowReadonly(state),
+    state: useDeviceState(read, watchParty.subscribe, client.onStatus),
     start: watchParty.start,
     join: watchParty.join,
     replace: watchParty.replace,

@@ -4,6 +4,7 @@
  */
 import { otherViewer, type Viewer } from "../../models/Viewer";
 import type { DeviceClient } from "../deviceClient";
+import { createListeners } from "../listeners";
 import type { PresenceMessage, TitleRef, ViewerPresence } from "./protocol";
 
 export interface OtherViewerPresence extends ViewerPresence {
@@ -22,12 +23,12 @@ export interface DevicePresence {
 }
 
 export function createDevicePresence(client: DeviceClient): DevicePresence {
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   let viewers: PresenceMessage["viewers"] | null = null;
   let watching: TitleRef | null = null;
 
   function changed() {
-    for (const listener of listeners) listener();
+    listeners.notify();
   }
 
   client.on("presence", (message) => {
@@ -62,9 +63,6 @@ export function createDevicePresence(client: DeviceClient): DevicePresence {
       client.send({ type: "presence:watching", title: watching });
     },
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: listeners.subscribe,
   };
 }

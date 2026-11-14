@@ -15,6 +15,7 @@ import { otherViewer, type Viewer } from "../../models/Viewer";
 import type { Playable, SourceId } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
+import { createListeners } from "../listeners";
 import type { DeviceWatchParty } from "./device";
 import { POSITION_REPORT_MS } from "./drift";
 import { episodeAfter, type EpisodeGuide } from "./episodeGuide";
@@ -185,7 +186,7 @@ export function createPartySync({
   readyTimeoutMs,
   episodes,
 }: PartySyncOptions): PartySync {
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   let adapter: SyncableSourceAdapter | null = null;
   let view: PartySyncView = {
     player: "loading",
@@ -233,7 +234,7 @@ export function createPartySync({
     const changed = (Object.keys(next) as (keyof PartySyncView)[]).some((key) => next[key] !== view[key]);
     if (!changed) return;
     view = { ...view, ...next };
-    for (const listener of [...listeners]) listener();
+    listeners.notify();
   }
 
   /**
@@ -693,10 +694,7 @@ export function createPartySync({
       return view;
     },
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: listeners.subscribe,
 
     resume() {
       if (destroyed) return;
