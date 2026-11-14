@@ -80,6 +80,8 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly partySync: PartySync | null;
   /** The Source's player in the Watch Party player, once it loaded something; null otherwise. */
   readonly player: FakeSourcePlayer | null;
+  /** The Viewer presses "Click to resume" over the Watch Party player: a click in the page, then party sync resumes. */
+  clickToResume(): void;
   /** This device's fake browser media: what its microphone and camera allow, and its peer connections. */
   readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
@@ -235,6 +237,11 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
       },
       received: traffic.received,
       connectionAttempts: traffic.connectionAttempts,
+      clickToResume() {
+        if (!partyPlayer) throw new Error(`${name} shows no Watch Party player to click.`);
+        partyPlayer.frame.click();
+        partyPlayer.partySync.resume();
+      },
       closeSite() {
         device.client.stop();
       },

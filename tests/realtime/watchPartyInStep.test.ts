@@ -255,5 +255,37 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(giorgi.player!.position).toBeCloseTo(waitingAt + resumedFor, 0);
       expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
     });
+
+    it("offers \"Click to resume\" when the browser will not start her player, and is waited for until she clicks", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      // After a reload the page has had no click yet, so the browser refuses to start the player with sound.
+      const reloaded = mariam.reload({ player: { blocksPlayUntilClick: true } });
+      h.advance(10 * SECOND);
+      expect(reloaded.player?.paused).toBe(true);
+      expect(reloaded.partySync?.view.clickToResume).toBe(true);
+      expect(giorgi.player?.paused).toBe(true);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      h.advance(MINUTE);
+      expect(giorgi.player?.paused).toBe(true);
+
+      reloaded.clickToResume();
+      h.advance(10 * SECOND);
+      expect(reloaded.partySync?.view.clickToResume).toBe(false);
+      expect(giorgi.partySync?.view.waitingFor).toBeNull();
+      expect(giorgi.player?.paused).toBe(false);
+      expect(reloaded.player?.paused).toBe(false);
+      expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
+    });
+
+    it("does not offer \"Click to resume\" when the player merely does not start on its own", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      const reloaded = mariam.reload({ player: { noAutoplay: true } });
+      h.advance(10 * SECOND);
+      expect(reloaded.partySync?.view.clickToResume).toBe(false);
+      expect(reloaded.player?.paused).toBe(false);
+      expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
+    });
   });
 });

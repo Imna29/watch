@@ -43,6 +43,9 @@ const STALL_MS = 2000;
 /** A player that fell behind plays on until it is this close to where the Watch Party waits for it. */
 const CAUGHT_UP_S = 0.1;
 
+/** A player says "play" at once when it starts; one still silent this long after a play command did not start. */
+const PLAY_REFUSED_MS = 2000;
+
 export interface PartySyncView {
   /** The Source's player: loading the Title, ready, or failed to load it. */
   player: "loading" | "ready" | "failed";
@@ -59,12 +62,20 @@ export interface PartySyncView {
   lastChange: WatchPartyChange | null;
   /** "Next episode in 10s · Cancel": the episode both move to, and the seconds left; null otherwise. */
   nextEpisode: { episode: Episode; secondsLeft: number } | null;
+  /**
+   * "Click to resume": the browser would not start the player (after a page
+   * reload it may refuse until the Viewer clicks in the page). The Watch
+   * Party waits for this Viewer meanwhile. The button calls `resume()`.
+   */
+  clickToResume: boolean;
 }
 
 export interface PartySync {
   readonly view: PartySyncView;
   /** Calls `listener` after every change of `view`. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
+  /** "Click to resume" was clicked: the player may start now. Call it from the click itself. */
+  resume(): void;
   /** Stops controlling the player; the caller then removes it. */
   destroy(): void;
 }
@@ -173,6 +184,7 @@ export function createPartySync({
     gettingReady: false,
     lastChange: null,
     nextEpisode: null,
+    clickToResume: false,
   };
   /**
    * The player as last heard from it (or as last told: commands count as
@@ -193,6 +205,8 @@ export function createPartySync({
   let changeTimer: TimerId | null = null;
   let reportTimer: TimerId | null = null;
   let startTimer: TimerId | null = null;
+  /** While a play command waits for the player's "play": the timer that gives up on it. */
+  let playTimer: TimerId | null = null;
   /** The loaded Title's length, once the player reported it. */
   let duration: number | null = null;
   /**
@@ -284,7 +298,7 @@ export function createPartySync({
       seq: party.seq,
       position: playerPosition(),
       serverTime: client.serverNow(),
-      stalled: player.stalled,
+      stalled: player.stalled || view.clickToResume,
     });
   }
 
@@ -299,11 +313,12 @@ export function createPartySync({
       echoes.expect({ type: "seeked", position: wanted.position });
       playerIsAt(wanted.position);
     }
-    if (wanted.playing && player.paused) {
+    if (wanted.playing && player.paused && !view.clickToResume) {
       adapter.play();
       echoes.expect({ type: "play" });
       playerIsAt(playerPosition());
       player.paused = false;
+      expectPlayToStart();
     } else if (!wanted.playing && !player.paused) {
       adapter.pause();
       echoes.expect({ type: "pause" });
@@ -368,6 +383,7 @@ export function createPartySync({
    * to (an echo), or because the Viewer did it in the Source's controls.
    */
   function heardPlayback(event: Extract<PlayerEvent, { type: "play" | "pause" | "ratechange" }>) {
+    if (event.type === "play") playStarted();
     playerIsAt(playerPosition());
     const before = { paused: player.paused, rate: player.rate };
     const echo = echoes.heard(event);
@@ -590,6 +606,29 @@ export function createPartySync({
     return phase.name === "waiting" ? phase.viewer : null;
   }
 
+  /**
+   * After a play command: a player that has not said "play" within
+   * `PLAY_REFUSED_MS` did not start (the browser refused it), so the Viewer
+   * is offered "Click to resume", and the player stays where it was.
+   */
+  function expectPlayToStart() {
+    if (playTimer !== null) return;
+    playTimer = clock.setTimeout(() => {
+      playTimer = null;
+      if (destroyed || view.player !== "ready") return;
+      playerIsAt(player.position);
+      player.paused = true;
+      setView({ clickToResume: true });
+    }, PLAY_REFUSED_MS);
+  }
+
+  /** The player said "play": it can start. */
+  function playStarted() {
+    if (playTimer !== null) clock.clearTimeout(playTimer);
+    playTimer = null;
+    setView({ clickToResume: false });
+  }
+
   /** Starts the player at the moment the shared state says, so every player starts at once. */
   function startOnTime(party: WatchPartyState) {
     if (startTimer !== null) clock.clearTimeout(startTimer);
@@ -622,12 +661,19 @@ export function createPartySync({
       return () => listeners.delete(listener);
     },
 
+    resume() {
+      if (destroyed) return;
+      setView({ clickToResume: false });
+      apply();
+    },
+
     destroy() {
       destroyed = true;
       stopFollowing();
       stopCatchingUp();
       if (reportTimer !== null) clock.clearTimeout(reportTimer);
       if (startTimer !== null) clock.clearTimeout(startTimer);
+      if (playTimer !== null) clock.clearTimeout(playTimer);
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
       if (changeTimer !== null) clock.clearTimeout(changeTimer);
       if (nextEpisodeTimer !== null) clock.clearTimeout(nextEpisodeTimer);
