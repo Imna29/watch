@@ -30,4 +30,12 @@ playlists and watched-episode tracking.
 Database schema lives in `server/database/`; migrations in `drizzle/` are
 generated with `bun run db:generate` and applied with `bun run db:migrate`.
 
+## Self-hosting
+
+`compose.yaml` runs the whole site with Docker Compose: the app, Postgres,
+Caddy for HTTPS and coturn as the Call's relay. Fill in `.env` (including the
+self-hosted stack section of `.env.example`), then run
+`docker compose up -d --build --wait`. See "Self-hosting" in `AGENTS.md` for
+what the server needs (a domain and open ports).
+
 See `AGENTS.md` for the project layout and conventions.
