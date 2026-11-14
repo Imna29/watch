@@ -84,17 +84,6 @@ watch(() => tabShare.state.value, (now, before) => {
 });
 onBeforeUnmount(() => clearTimeout(tabShareProblemTimer));
 
-function tabShareProblemMessage(problem: MediaProblem) {
-    switch (problem) {
-        case "unsupported":
-            return "This browser can't share a tab. Use Chrome or Edge on a computer.";
-        case "blocked":
-            return "No tab was shared. To share, choose this tab in the browser's dialog.";
-        default:
-            return "Your tab couldn't be shared. Try again.";
-    }
-}
-
 const sourceName = computed(() => getSource(party.value.source).name);
 
 // The episode picker follows the Watch Party; choosing another episode there moves both Viewers to it.
@@ -215,7 +204,7 @@ const miniStatus = computed(() => {
                 {{ describeChange(view.lastChange) }}
             </div>
             <div v-if="tabShareProblem" role="alert" class="rounded-lg bg-black/80 px-4 py-2 text-amber-300">
-                {{ tabShareProblemMessage(tabShareProblem) }}
+                {{ mediaProblemMessage("tab", tabShareProblem) }}
             </div>
         </div>
         <template #controls>
