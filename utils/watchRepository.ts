@@ -145,6 +145,14 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
   },
 
   /**
+   * Deletes the movie's Analysis for good. Only the writer may (403
+   * otherwise); 404 when the movie has none, 409 once it is graded.
+   */
+  async deleteAnalysis(movieId: number) {
+    return fetch<void>(`/analyses/${movieId}`, { method: "DELETE" });
+  },
+
+  /**
    * Sets or replaces the movie's Grade and remark (null for none). Only the
    * grader may (403 otherwise); 404 when the movie has no Analysis.
    */

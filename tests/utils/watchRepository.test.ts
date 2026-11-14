@@ -66,6 +66,12 @@ describe("watchRepository", () => {
     });
   });
 
+  it("deletes a movie's Analysis", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.deleteAnalysis(550);
+    expect(fetch).toHaveBeenCalledWith("/analyses/550", { method: "DELETE" });
+  });
+
   it("puts a Grade and its remark to the movie's grade route", async () => {
     const { fetch, repo } = makeRepo();
     await repo.gradeAnalysis(550, -1, "Missed it.\nEntirely.");

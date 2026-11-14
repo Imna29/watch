@@ -39,6 +39,12 @@ export interface AnalysisStore {
    * Analysis as stored, or null when the movie has none.
    */
   grade(movieId: number, grade: number, remark: string | null, at: Date): Promise<Analysis | null>;
+  /**
+   * Deletes the movie's Analysis when it is ungraded. Returns it as it was,
+   * or null when nothing was deleted: the movie has none, or it is graded.
+   * One conditional operation, so a Grade given meanwhile always wins.
+   */
+  removeUnlessGraded(movieId: number): Promise<Analysis | null>;
 }
 
 export interface AnalysesOptions {
@@ -60,6 +66,12 @@ export type GradeResult =
   /** The movie has no Analysis. */
   | { outcome: "no-analysis" };
 
+export type RemoveResult =
+  | { outcome: "removed" }
+  | { outcome: "wrong-viewer" }
+  | { outcome: "no-analysis" }
+  | { outcome: "already-graded" };
+
 export function createAnalyses({ store, now = Date.now }: AnalysesOptions) {
   return {
     /**
@@ -80,6 +92,19 @@ export function createAnalyses({ store, now = Date.now }: AnalysesOptions) {
       if (viewer !== ANALYSIS_GRADER) return { outcome: "wrong-viewer" };
       const analysis = await store.grade(movieId, grade, remark, new Date(now()));
       return analysis ? { outcome: "graded", analysis } : { outcome: "no-analysis" };
+    },
+
+    /**
+     * Deletes the movie's Analysis for good. Only the writer may, and only
+     * until it is graded.
+     */
+    async remove(viewer: Viewer, movieId: number): Promise<RemoveResult> {
+      if (viewer !== ANALYSIS_WRITER) return { outcome: "wrong-viewer" };
+      if (await store.removeUnlessGraded(movieId)) return { outcome: "removed" };
+      // Nothing was deleted. A Grade is never taken back, so a graded
+      // Analysis found now was graded when the delete ran.
+      const analysis = await store.find(movieId);
+      return analysis?.grade != null ? { outcome: "already-graded" } : { outcome: "no-analysis" };
     },
 
     /** The movie's Analysis, or null when it has none. Either Viewer may read it. */

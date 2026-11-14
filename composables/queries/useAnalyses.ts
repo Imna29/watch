@@ -35,6 +35,22 @@ export function useWriteAnalysis() {
   })
 }
 
+/** Deletes a movie's Analysis for good. Only the writer may (`ANALYSIS_WRITER`), until it is graded. */
+export function useDeleteAnalysis() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (movieId: number) => {
+      const { $apiClient } = useNuxtApp()
+      return watchRepository($apiClient).deleteAnalysis(movieId)
+    },
+    // Also after a refusal (graded meanwhile), so the page shows the graded Analysis.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.analyses.all })
+    },
+  })
+}
+
 /**
  * Sets or replaces the Grade and remark (null for none) of a movie's
  * Analysis. Only the grader may (`ANALYSIS_GRADER`).

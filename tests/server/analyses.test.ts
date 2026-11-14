@@ -220,3 +220,69 @@ describe("a graded Analysis is locked", () => {
     expect(await analyses.write("giorgi", MEMENTO, "About Memento.")).toMatchObject({ outcome: "written" });
   });
 });
+
+describe("deleting an Analysis", () => {
+  it("lets the writer delete his ungraded Analysis, which is then gone for both Viewers", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "Tyler is the narrator.");
+
+    expect(await analyses.remove("giorgi", FIGHT_CLUB)).toEqual({ outcome: "removed" });
+    expect(await analyses.forMovie("giorgi", FIGHT_CLUB)).toBeNull();
+    expect(await analyses.forMovie("mariam", FIGHT_CLUB)).toBeNull();
+  });
+
+  it("refuses anyone but the writer, and keeps the Analysis", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "Tyler is the narrator.");
+
+    expect(await analyses.remove("mariam", FIGHT_CLUB)).toEqual({ outcome: "wrong-viewer" });
+    expect(await analyses.forMovie("giorgi", FIGHT_CLUB)).toMatchObject({ text: "Tyler is the narrator." });
+  });
+
+  it("refuses when the movie has no Analysis, leaving other movies' alone", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+
+    expect(await analyses.remove("giorgi", FIGHT_CLUB)).toEqual({ outcome: "no-analysis" });
+    expect(await analyses.forMovie("mariam", MEMENTO)).toMatchObject({ text: "About Memento." });
+  });
+
+  it("refuses once the Analysis is graded, keeping the text and Grade", async () => {
+    const { clock, analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "Tyler is the narrator.");
+    clock.advance(MINUTE);
+    await analyses.grade("mariam", FIGHT_CLUB, 7, "Good, but short.");
+
+    expect(await analyses.remove("giorgi", FIGHT_CLUB)).toEqual({ outcome: "already-graded" });
+    expect(await analyses.forMovie("mariam", FIGHT_CLUB)).toEqual({
+      movieId: FIGHT_CLUB,
+      text: "Tyler is the narrator.",
+      submittedAt: new Date("2026-11-14T20:00:00Z"),
+      editedAt: new Date("2026-11-14T20:00:00Z"),
+      grade: 7,
+      remark: "Good, but short.",
+      gradedAt: new Date("2026-11-14T20:01:00Z"),
+    });
+  });
+
+  it("lets the movie get a new Analysis afterwards, submitted anew", async () => {
+    const { clock, analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "Didn't mean to submit this.");
+    await analyses.remove("giorgi", FIGHT_CLUB);
+    clock.advance(10 * MINUTE);
+
+    expect(await analyses.write("giorgi", FIGHT_CLUB, "Tyler is the narrator.")).toEqual({
+      outcome: "written",
+      analysis: {
+        movieId: FIGHT_CLUB,
+        text: "Tyler is the narrator.",
+        submittedAt: new Date("2026-11-14T20:10:00Z"),
+        editedAt: new Date("2026-11-14T20:10:00Z"),
+        grade: null,
+        remark: null,
+        gradedAt: null,
+      },
+    });
+    expect(await analyses.grade("mariam", FIGHT_CLUB, 5, null)).toMatchObject({ outcome: "graded" });
+  });
+});

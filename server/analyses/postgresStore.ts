@@ -1,4 +1,4 @@
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { db as appDb } from "../database/db";
 import { analyses } from "../database/schema";
 import type { Analysis, AnalysisStore } from "./analyses";
@@ -33,6 +33,16 @@ export function createPostgresAnalysisStore(db: Database): AnalysisStore {
         .update(analyses)
         .set({ grade, remark, gradedAt: at })
         .where(eq(analyses.movieId, movieId))
+        .returning();
+      return row ? toAnalysis(row) : null;
+    },
+
+    // `delete ... where movie_id = ? and grade is null`: a graded row is kept
+    // and nothing is returned.
+    async removeUnlessGraded(movieId) {
+      const [row] = await db
+        .delete(analyses)
+        .where(and(eq(analyses.movieId, movieId), isNull(analyses.grade)))
         .returning();
       return row ? toAnalysis(row) : null;
     },
