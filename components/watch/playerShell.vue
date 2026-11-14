@@ -20,6 +20,8 @@ import { SOURCES, getSource, type Playable, type SourceId } from "~/utils/source
 const props = defineProps<{
     contentType: WatchPlaylistItemType;
     tmdbId: number;
+    /** The Title's name, shown to the other Viewer while this player is open. */
+    title: string;
 }>();
 
 const season = defineModel<number>("season", { default: 1 });
@@ -48,6 +50,8 @@ const {
     isFullscreen,
     toggle: toggleFullscreen,
 } = useFullscreen(shell, { autoExit: true });
+
+useWatchingPresence(() => ({ contentType: props.contentType, tmdbId: props.tmdbId, name: props.title }));
 
 const addToSystemPlaylist = useAddToSystemPlaylist();
 const { mutateAsync: addWatchedEpisode } = useAddWatchedEpisode();

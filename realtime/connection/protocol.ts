@@ -1,5 +1,8 @@
 import type { Viewer } from "../../models/Viewer";
 
+/** The WebSocket endpoint, served by `server/routes/realtime.ts`. */
+export const REALTIME_PATH = "/realtime";
+
 /** One connection of one Viewer's device, as named by the server. */
 export type DeviceId = string;
 

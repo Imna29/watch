@@ -59,7 +59,7 @@ function openAddToPlaylistDialog() {
         <span>Loading TV show...</span>
     </div>
     <div class="container" v-else-if="tvData">
-        <WatchPlayerShell v-if="playerState.isOpen" :content-type="WatchPlaylistItemType.TV_SHOW" :tmdb-id="id"
+        <WatchPlayerShell v-if="playerState.isOpen" :content-type="WatchPlaylistItemType.TV_SHOW" :tmdb-id="id" :title="tvData.name"
             v-model:season="playerState.seasonNumber" v-model:episode="playerState.episodeNumber"
             @close="playerState.isOpen = false"></WatchPlayerShell>
         <div class="relative left-1/2 right-1/2 !ml-[-50vw] !mr-[-50vw] !w-dvw !m-0 !p-0" :style="backgroundStyle">

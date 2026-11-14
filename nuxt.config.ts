@@ -16,6 +16,8 @@ export default defineNuxtConfig({
   // Nitro's bun preset extends node-server and serves via Bun.serve.
   nitro: {
     preset: "bun",
+    // The realtime connection (server/routes/realtime.ts).
+    experimental: { websocket: true },
   },
 
   routeRules: {
