@@ -1,4 +1,5 @@
 import type { $Fetch, NitroFetchRequest } from "nitropack";
+import type { Analysis } from "~/models/apiModels/watch/Analysis";
 import type LastWatched from "~/models/apiModels/watch/LastWatched";
 import type {
   GenreResponse,
@@ -123,6 +124,20 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
     return fetch(`/playlists/${playlistId}/items`, {
       method: "DELETE",
       body: JSON.stringify({ itemIds }),
+    });
+  },
+
+  // Analyses
+  /** The movie's Analysis; `analysis` is null when it has none. */
+  async getAnalysis(movieId: number) {
+    return fetch<{ analysis: Analysis | null }>(`/analyses/${movieId}`);
+  },
+
+  /** Writes the movie's Analysis, or replaces its text. Only the writer may (403 otherwise). */
+  async writeAnalysis(movieId: number, text: string) {
+    return fetch<{ analysis: Analysis }>(`/analyses/${movieId}`, {
+      method: "PUT",
+      body: { text },
     });
   },
 

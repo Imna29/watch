@@ -8,6 +8,11 @@ export const VIEWER_NAMES: Record<Viewer, string> = {
   mariam: "Mariam",
 };
 
+/** The Viewer who writes Analyses (GLOSSARY.md, "Understanding"). Server checks and UI read it. */
+export const ANALYSIS_WRITER: Viewer = "giorgi";
+/** The Viewer who grades Analyses. Server checks and UI read it. */
+export const ANALYSIS_GRADER: Viewer = "mariam";
+
 export function isViewer(value: unknown): value is Viewer {
   return (VIEWERS as readonly unknown[]).includes(value);
 }

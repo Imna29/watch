@@ -7,7 +7,9 @@ import {
   pgEnum,
   unique,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { VIEWERS } from "../../models/Viewer";
 
 // Enums
@@ -88,6 +90,36 @@ export const watchedEpisodes = pgTable(
     index("watched_episodes_viewer_tvshow_idx").on(
       table.viewer,
       table.tvShowId
+    ),
+  ]
+);
+
+// Analyses table (GLOSSARY.md, "Understanding"): at most one per movie. Only
+// Giorgi writes them (`ANALYSIS_WRITER`), so there is no writer column.
+export const analyses = pgTable(
+  "analyses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The movie's TMDB id.
+    movieId: integer("movie_id").notNull(),
+    text: text("text").notNull(),
+    submittedAt: timestamp("submitted_at", { mode: "date" }).notNull(),
+    editedAt: timestamp("edited_at", { mode: "date" }).notNull(),
+    // Mariam's Grade, its remark and when she gave it; null until graded.
+    grade: integer("grade"),
+    remark: text("remark"),
+    gradedAt: timestamp("graded_at", { mode: "date" }),
+  },
+  (table) => [
+    unique("analyses_movie_id_unique_idx").on(table.movieId),
+    check("analyses_grade_range", sql`${table.grade} between -1 and 10`),
+    check(
+      "analyses_grade_with_graded_at",
+      sql`(${table.grade} is null) = (${table.gradedAt} is null)`
+    ),
+    check(
+      "analyses_remark_needs_grade",
+      sql`${table.remark} is null or ${table.grade} is not null`
     ),
   ]
 );
