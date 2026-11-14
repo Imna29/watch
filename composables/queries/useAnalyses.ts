@@ -1,7 +1,12 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
+import { writeAnalysisMutation } from './writeAnalysisMutation'
 
+// The other Viewer changes Analyses from their own device, and nothing tells
+// this one, so these queries are stale at once (not after the app's 5
+// minutes, `plugins/vue-query.ts`): a page that shows them reads them again
+// when it mounts.
 export const analysisOptions = {
   /** Every Analysis in list order, with the average Grade (null while none is graded) and the count to grade. */
   list: () =>
@@ -11,6 +16,7 @@ export const analysisOptions = {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getAnalyses()
       },
+      staleTime: 0,
     }),
   /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
   toGrade: () =>
@@ -21,6 +27,11 @@ export const analysisOptions = {
         const { count } = await watchRepository($apiClient).getAnalysesToGrade()
         return count
       },
+      staleTime: 0,
+      // The header that shows it stays mounted, so it reads it again every
+      // minute and whenever the window comes back into focus.
+      refetchInterval: 60 * 1000,
+      refetchOnWindowFocus: true,
     }),
   /** The movie's Analysis, or null when it has none. */
   byMovie: (movieId: MaybeRefOrGetter<number>) =>
@@ -31,6 +42,7 @@ export const analysisOptions = {
         const { analysis } = await watchRepository($apiClient).getAnalysis(toValue(movieId))
         return analysis
       },
+      staleTime: 0,
     }),
 }
 
@@ -54,16 +66,12 @@ export function useMovieAnalysis(movieId: MaybeRefOrGetter<number>) {
 export function useWriteAnalysis() {
   const queryClient = useQueryClient()
 
-  return useMutation({
-    mutationFn: async ({ movieId, text }: { movieId: number; text: string }) => {
+  return useMutation(
+    writeAnalysisMutation(queryClient, async (movieId, text) => {
       const { $apiClient } = useNuxtApp()
       return watchRepository($apiClient).writeAnalysis(movieId, text)
-    },
-    // Also after a refusal, so the page shows the Analysis as the server has it.
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.analyses.all })
-    },
-  })
+    }),
+  )
 }
 
 /** Deletes a movie's Analysis for good. Only the writer may (`ANALYSIS_WRITER`), until it is graded. */

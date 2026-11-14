@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAnalyses } from "../../server/analyses/analyses";
-import { createMemoryAnalysisStore } from "../../server/analyses/memoryStore";
+import { createMemoryAnalysisStore } from "./memoryAnalysisStore";
 
 function fakeClock() {
   let time = Date.UTC(2026, 10, 14, 20, 0, 0);

@@ -9,7 +9,10 @@ definePageMeta({
 });
 
 const { data: viewer } = useViewer();
-const { data: list, isPending, isError } = useAnalysisList();
+const { data: list, isPending, isError, refetch } = useAnalysisList();
+// Pages stay alive (`app.vue`), so coming back to this one is no new mount:
+// read the list again then too. On the first mount, this joins its fetch.
+onActivated(() => refetch({ cancelRefetch: false }));
 
 const whoCanWrite = computed(() =>
     viewer.value === ANALYSIS_WRITER ? "You can" : `${VIEWER_NAMES[ANALYSIS_WRITER]} can`,
