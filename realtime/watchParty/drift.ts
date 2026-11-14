@@ -16,13 +16,14 @@
  *
  * A Viewer whose active device has been disconnected for
  * `DISCONNECT_GRACE_MS` is waited for the same way, from where the Watch
- * Party was when the device went away.
+ * Party was when the device went away. A Watch Party still waiting for the
+ * other Viewer to join ends instead when the starter's device is gone.
  */
 import { z } from "zod";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
-import { anchorAt, type PositionMessage, type WatchPartyState } from "./protocol";
+import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
 
 /** How often party sync reports where its player is. */
 export const POSITION_REPORT_MS = 1000;
@@ -67,9 +68,11 @@ export interface DriftOptions {
   party(): WatchPartyState | null;
   /** Tells every device the Watch Party's new shared state. */
   publish(next: Omit<WatchPartyState, "seq">): void;
+  /** Ends the Watch Party for both Viewers. */
+  end(reason: WatchPartyEndReason, by: Viewer): void;
 }
 
-export function keepInStep({ context, party, publish }: DriftOptions) {
+export function keepInStep({ context, party, publish, end }: DriftOptions) {
   /** Each Viewer's latest report, with the device it came from. */
   const reports = new Map<Viewer, PositionMessage & { device: DeviceId }>();
   /** When each device was last told to catch up. */
@@ -107,7 +110,8 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
   /** `viewer`'s active device went away at server time `since`, and has not come back. */
   function gone(current: WatchPartyState, viewer: Viewer, since: number) {
     const { phase } = current;
-    if (phase.name === "playing" || phase.name === "paused") wait(current, viewer, "disconnected", since);
+    if (phase.name === "inviting" && viewer === current.starter) end("gone", viewer);
+    else if (phase.name === "playing" || phase.name === "paused") wait(current, viewer, "disconnected", since);
     else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
       publish({ ...current, phase: { name: "waiting", viewer, reason: "disconnected" } });
     }

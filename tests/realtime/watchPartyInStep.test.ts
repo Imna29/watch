@@ -278,6 +278,27 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
     });
 
+    it("while she still waits for the other Viewer keeps the invite, and her player waits at 0:00 again", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+
+      const reloaded = giorgi.reload();
+      h.advance(MINUTE);
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: DUNE });
+      expect(reloaded.partySync?.view.waitingFor).toBe("mariam");
+      expect(reloaded.player).toMatchObject({ paused: true, position: 0 });
+
+      mariam.watchParty.join();
+      h.advance(15 * SECOND);
+      expect(reloaded.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(apart(reloaded, mariam)).toBeLessThan(0.5);
+    });
+
     it("does not offer \"Click to resume\" when the player merely does not start on its own", () => {
       const { h, giorgi, mariam } = watchingTogether();
 
@@ -286,6 +307,29 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(reloaded.partySync?.view.clickToResume).toBe(false);
       expect(reloaded.player?.paused).toBe(false);
       expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
+    });
+  });
+
+  describe("an invite still waiting for the other Viewer", () => {
+    it("ends once the starter's device has been gone a few seconds", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      expect(mariam.watchParty.invite).not.toBeNull();
+
+      giorgi.closeSite();
+      h.advance(3 * SECOND);
+      expect(mariam.watchParty.invite).not.toBeNull();
+
+      h.advance(5 * SECOND);
+      expect(mariam.watchParty.invite).toBeNull();
+      expect(mariam.watchParty.ended).toMatchObject({ title: DUNE, reason: "gone", by: "giorgi" });
+      const later = h.device("mariam");
+      h.advance(SECOND);
+      expect(later.watchParty.invite).toBeNull();
     });
   });
 });

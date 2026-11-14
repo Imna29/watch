@@ -43,7 +43,9 @@ export type WatchPartyEndReason =
   /** The movie, or the TV show's final episode, ended. */
   | "finished"
   /** A Viewer closed the player: the other Viewer keeps watching alone, or stops. */
-  | "left";
+  | "left"
+  /** The starter's device went away while the Watch Party still waited for the other Viewer. */
+  | "gone";
 
 /**
  * What the Watch Party is doing. In order:

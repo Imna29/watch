@@ -42,6 +42,8 @@ function endedMessage({ reason, by }: EndedNotice) {
             return `${VIEWER_NAMES[by]} left the Watch Party of`;
         case "cancelled":
             return `${VIEWER_NAMES[by]} ended the Watch Party of`;
+        case "gone":
+            return `${VIEWER_NAMES[by]} went offline, ending the invite to`;
     }
 }
 

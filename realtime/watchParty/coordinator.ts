@@ -141,7 +141,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       }
     }
 
-    const inStep = keepInStep({ context, party: () => party, publish });
+    const inStep = keepInStep({ context, party: () => party, publish, end });
 
     /** Ends the Watch Party for both Viewers; devices hear why, then it is gone. */
     function end(reason: WatchPartyEndReason, by: Viewer) {
