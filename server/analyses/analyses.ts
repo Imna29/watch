@@ -146,6 +146,12 @@ export interface AnalysisList {
   average: number | null;
 }
 
+/** `GET /api/analyses`: every Analysis as `list` gives it, with the count `toGrade` gives. */
+export interface AnalysisListResponse extends AnalysisList {
+  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
+  toGrade: number;
+}
+
 /** Ungraded before graded; within each, the later first submission first. */
 function inListOrder(a: Analysis, b: Analysis): number {
   const ungradedFirst = Number(a.grade !== null) - Number(b.grade !== null);

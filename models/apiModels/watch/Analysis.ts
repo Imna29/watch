@@ -1,3 +1,6 @@
+import type { Serialize } from "nitropack";
+import type * as Server from "../../../server/analyses/analyses";
+
 /** The most characters an Analysis may have, after trimming. The server refuses more; the page counts down to it. */
 export const ANALYSIS_TEXT_MAX_LENGTH = 2000;
 
@@ -8,27 +11,11 @@ export const GRADE_MAX = 10;
 /** The most characters a Grade's remark may have, after trimming. */
 export const GRADE_REMARK_MAX_LENGTH = 500;
 
-/** A movie's Analysis as the API returns it (`server/analyses/analyses.ts`), dates as ISO strings. */
-export interface Analysis {
-  /** The movie's TMDB id. */
-  movieId: number;
-  text: string;
-  submittedAt: string;
-  editedAt: string;
-  /** The Grade, `GRADE_MIN` to `GRADE_MAX`; null until graded. Once graded, the text is locked. */
-  grade: number | null;
-  /** The remark given with the Grade; null without one. */
-  remark: string | null;
-  /** When the current Grade was given; null until graded. */
-  gradedAt: string | null;
-}
+// The API's JSON of the server's types (`server/analyses/analyses.ts`), as
+// Nitro types a JSON response: dates become ISO strings.
+
+/** A movie's Analysis as the API returns it. */
+export type Analysis = Serialize<Server.Analysis>;
 
 /** `GET /api/analyses`: every Analysis, with the average Grade and the count to grade. */
-export interface AnalysisList {
-  /** Ungraded first, then newest first by first submission. */
-  analyses: Analysis[];
-  /** The mean Grade of the graded Analyses (-1 counts as -1), to one decimal; null while none is graded. */
-  average: number | null;
-  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
-  toGrade: number;
-}
+export type AnalysisList = Serialize<Server.AnalysisListResponse>;
