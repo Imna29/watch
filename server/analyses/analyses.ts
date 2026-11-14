@@ -23,7 +23,7 @@ export interface Analysis {
   gradedAt: Date | null;
 }
 
-/** Where Analyses are kept: Postgres in the app (`postgresStore.ts`), memory in tests (`memoryStore.ts`). */
+/** Where Analyses are kept: Postgres in the app (`postgresStore.ts`), memory in tests (`tests/server/memoryAnalysisStore.ts`). */
 export interface AnalysisStore {
   /** The movie's Analysis, or null when it has none. */
   find(movieId: number): Promise<Analysis | null>;

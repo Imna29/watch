@@ -1,4 +1,4 @@
-import type { Analysis, AnalysisStore } from "./analyses";
+import type { Analysis, AnalysisStore } from "../../server/analyses/analyses";
 
 /** An `AnalysisStore` in memory, behaving like the Postgres one. For tests. */
 export function createMemoryAnalysisStore(): AnalysisStore {
