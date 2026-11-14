@@ -11,6 +11,7 @@ import { otherViewer, VIEWER_NAMES } from "~/models/Viewer";
 import type { MediaProblem } from "~/realtime/call/device";
 import { describeChange } from "~/realtime/watchParty/changeMessage";
 import { playableOf } from "~/realtime/watchParty/partySync";
+import type { Episode } from "~/realtime/watchParty/protocol";
 import { WATCH_PARTY_SOURCES } from "~/realtime/watchParty/sources";
 import { getSource, SOURCES, type SourceId } from "~/utils/sources";
 
@@ -44,13 +45,26 @@ const otherName = computed(() => {
 });
 const tabShareSources = [...SOURCES];
 const tabShareSourceId = useId();
-const tabShareSource = ref<SourceId>(initial.tabShare?.source ?? firstTabShareSource(initial));
-watch(() => party.value.tabShare?.source, (source) => {
-    if (source) tabShareSource.value = source;
-});
-watch(tabShareSource, (source) => {
-    tabShare.changeSource(source);
-});
+
+/**
+ * A control's value: it shows the Watch Party's (`shared()`, whenever that changes), and the
+ * Viewer's change of it is sent on with `send`. The device module ignores a value the Watch Party
+ * already has, so following the Watch Party sends nothing.
+ */
+function mirrored<T>(shared: () => T | null | undefined, initial: T, send: (value: T) => void): Ref<T> {
+    const value = ref(initial) as Ref<T>;
+    watch(shared, (now) => {
+        if (now !== null && now !== undefined) value.value = typeof now === "object" ? { ...now } : now;
+    });
+    watch(value, (now) => send(now), { deep: true });
+    return value;
+}
+
+const tabShareSource = mirrored<SourceId>(
+    () => party.value.tabShare?.source,
+    initial.tabShare?.source ?? firstTabShareSource(initial),
+    (source) => tabShare.changeSource(source),
+);
 
 const shell = useTemplateRef<{ iframe: HTMLIFrameElement | null }>("shell");
 const iframe = computed(() => shell.value?.iframe);
@@ -87,13 +101,11 @@ function tabShareProblemMessage(problem: MediaProblem) {
 const sourceName = computed(() => getSource(party.value.source).name);
 
 // The episode picker follows the Watch Party; choosing another episode there moves both Viewers to it.
-const chosen = reactive({ season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 });
-watch(() => party.value.episode, (episode) => {
-    if (episode) Object.assign(chosen, episode);
-});
-watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
-    watchParty.changeEpisode({ season, episode });
-});
+const chosenEpisode = mirrored<Episode>(
+    () => party.value.episode,
+    { season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 },
+    ({ season, episode }) => watchParty.changeEpisode({ season, episode }),
+);
 
 // Source fallback: once the Source fails on either device, both Viewers are offered the next Syncable
 // Source; once none is left, Tab Share. The Source picker switches both players at any time.
@@ -101,11 +113,7 @@ const failedNames = computed(() => party.value.failedSources.map((id) => getSour
 const offeredSource = computed(() => (party.value.fallback?.kind === "source" ? party.value.fallback.source : null));
 const sourceOptions = WATCH_PARTY_SOURCES.map((id) => getSource(id));
 const sourcePickerId = useId();
-const chosenSource = ref<SourceId>(initial.source);
-watch(() => party.value.source, (source) => {
-    chosenSource.value = source;
-});
-watch(chosenSource, (source) => {
+const chosenSource = mirrored<SourceId>(() => party.value.source, initial.source, (source) => {
     watchParty.switchSource(source);
 });
 
@@ -219,29 +227,26 @@ const miniStatus = computed(() => {
                     Watching alone on {{ party.tabShare ? getSource(party.tabShare.source).name : sourceName }}
                 </span>
             </template>
-            <!-- Tab Share: the sharer picks the Source they share; either Viewer can stop it. -->
-            <template v-else-if="inTabShare">
-                <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season"
-                    v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
-                <template v-if="sharingHere">
+            <template v-else>
+                <WatchEpisodePicker v-if="party.episode" v-model:season="chosenEpisode.season"
+                    v-model:episode="chosenEpisode.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
+                <!-- Tab Share: the sharer picks the Source they share; either Viewer can stop it. -->
+                <template v-if="inTabShare && sharingHere">
                     <label :for="tabShareSourceId" class="px-1">Sharing</label>
                     <Select v-model="tabShareSource" :label-id="tabShareSourceId" aria-label="Source you share"
                         class="rounded p-2" :options="tabShareSources" option-value="id" option-label="name"
                         append-to="self">
                     </Select>
                 </template>
-                <span v-else-if="party.tabShare" class="px-1">
+                <span v-else-if="inTabShare && party.tabShare" class="px-1">
                     Watching {{ VIEWER_NAMES[party.tabShare.sharer] }}'s tab
                 </span>
-                <WatchTabShareButton></WatchTabShareButton>
-            </template>
-            <template v-else>
-                <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season"
-                    v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
-                <label :for="sourcePickerId" class="px-1">Watching together on</label>
-                <Select v-model="chosenSource" :label-id="sourcePickerId" aria-label="Source" class="rounded p-2"
-                    :options="sourceOptions" option-value="id" option-label="name" append-to="self">
-                </Select>
+                <template v-else-if="!inTabShare">
+                    <label :for="sourcePickerId" class="px-1">Watching together on</label>
+                    <Select v-model="chosenSource" :label-id="sourcePickerId" aria-label="Source" class="rounded p-2"
+                        :options="sourceOptions" option-value="id" option-label="name" append-to="self">
+                    </Select>
+                </template>
                 <WatchTabShareButton></WatchTabShareButton>
             </template>
         </template>
