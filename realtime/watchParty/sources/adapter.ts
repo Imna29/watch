@@ -32,9 +32,16 @@ export type PlayerEvent =
   | { type: "play" }
   | { type: "pause" }
   | { type: "seeked"; position: number }
-  | { type: "timeupdate"; position: number }
+  /** `duration`: the Title's length, once the player knows it. */
+  | { type: "timeupdate"; position: number; duration?: number }
   | { type: "ratechange"; rate: number }
+  /** Playback reached the end of the Title. A player reports "pause" first, as a `<video>` does. */
   | { type: "ended" }
+  /**
+   * The player moved to another episode by itself: the Viewer chose it in
+   * the Source's own episode list or pressed its next-episode button.
+   */
+  | { type: "episode"; season: number; episode: number }
   /** The answer to `requestStatus()`. */
   | { type: "status"; position: number; paused: boolean }
   /**

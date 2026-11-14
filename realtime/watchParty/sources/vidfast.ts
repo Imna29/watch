@@ -92,8 +92,12 @@ function createAdapter(options: AdapterOptions): SyncableSourceAdapter {
       case "ended":
         return { type: "ended" };
       case "seeked":
-      case "timeupdate":
-        return position === null ? null : { type: message.event, position };
+        return position === null ? null : { type: "seeked", position };
+      case "timeupdate": {
+        if (position === null) return null;
+        const duration = seconds(message.duration);
+        return duration === null ? { type: "timeupdate", position } : { type: "timeupdate", position, duration };
+      }
       case "playerstatus":
         return position === null || typeof message.playing !== "boolean"
           ? null
