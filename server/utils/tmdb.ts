@@ -39,5 +39,5 @@ export function createTmdbFetch({ apiKey, fetch }: TmdbFetchOptions) {
 }
 
 export const tmdbFetch = createTmdbFetch({
-  apiKey: () => process.env.TMDB_API_KEY || useRuntimeConfig().tmdbApiKey,
+  apiKey: () => process.env.TMDB_API_KEY || String(useRuntimeConfig().tmdbApiKey ?? ""),
 });
