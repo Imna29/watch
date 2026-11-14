@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
+import { writeAnalysisMutation } from './writeAnalysisMutation'
 
 export const analysisOptions = {
   /** Every Analysis in list order, with the average Grade (null while none is graded) and the count to grade. */
@@ -54,16 +55,12 @@ export function useMovieAnalysis(movieId: MaybeRefOrGetter<number>) {
 export function useWriteAnalysis() {
   const queryClient = useQueryClient()
 
-  return useMutation({
-    mutationFn: async ({ movieId, text }: { movieId: number; text: string }) => {
+  return useMutation(
+    writeAnalysisMutation(queryClient, async (movieId, text) => {
       const { $apiClient } = useNuxtApp()
       return watchRepository($apiClient).writeAnalysis(movieId, text)
-    },
-    // Also after a refusal, so the page shows the Analysis as the server has it.
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.analyses.all })
-    },
-  })
+    }),
+  )
 }
 
 /** Deletes a movie's Analysis for good. Only the writer may (`ANALYSIS_WRITER`), until it is graded. */
