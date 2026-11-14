@@ -78,6 +78,12 @@ export interface WatchPartyState {
   /** The Viewer who made the last change. */
   lastChangeBy: Viewer;
   /**
+   * The last change a Viewer made to playback, for the other Viewer's change
+   * message ("Mariam paused at 1:02:14"); null before the first. Later
+   * states carry it on: it is news only in the state whose `seq` it has.
+   */
+  lastChange: WatchPartyChange | null;
+  /**
    * The one device of each Viewer that takes part: the newest one they
    * joined from. Null for a Viewer not (yet) in it.
    */
@@ -129,6 +135,9 @@ export interface PlayerStatusMessage {
 export type PlaybackChange =
   | { kind: "play" | "pause" | "seek"; position: number }
   | { kind: "rate"; position: number; rate: number };
+
+/** A change `by` made, in the shared state numbered `seq`. */
+export type WatchPartyChange = PlaybackChange & { by: Viewer; seq: number };
 
 /**
  * Whether Viewers control playback in this phase: both are in and the Title

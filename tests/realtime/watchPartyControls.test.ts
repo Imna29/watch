@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import type { Episode } from "../../realtime/watchParty/protocol";
 import type { TitleRef } from "../../realtime/presence/protocol";
-import { createHarness, SECOND, sourceCanSetRate, syncableSourcesUnderTest } from "./harness";
+import { describeChange } from "../../realtime/watchParty/changeMessage";
+import { createHarness, SECOND, sourceCanSetRate, syncableSourcesUnderTest, type TestDevice } from "./harness";
 import type { FakePlayerOptions } from "./harness/fakeSourcePlayers";
 
 const MINUTE = 60 * SECOND;
@@ -103,6 +104,54 @@ describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %
       expect(mariam.player?.rate).toBe(1.5);
       expect(giorgi.player!.position).toBeCloseTo(before + 30, 0);
       expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+    });
+  });
+
+  describe("the change message", () => {
+    /** The change message `device` shows over the player; null when none. */
+    function message(device: TestDevice) {
+      const change = device.partySync?.view.lastChange;
+      return change ? describeChange(change) : null;
+    }
+
+    it("tells the other Viewer who did what, and where", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      mariam.player!.controls.seek(3734);
+      h.advance(SECOND);
+      expect(message(giorgi)).toBe("Mariam jumped to 1:02:14");
+      expect(message(mariam)).toBeNull();
+
+      mariam.player!.controls.pause();
+      h.advance(SECOND);
+      expect(message(giorgi)).toBe("Mariam paused at 1:02:15");
+
+      giorgi.player!.controls.play();
+      h.advance(SECOND);
+      expect(message(mariam)).toBe("Giorgi resumed at 1:02:15");
+      expect(message(giorgi)).toBe("Mariam paused at 1:02:15");
+
+      giorgi.player!.controls.seek(65);
+      h.advance(SECOND);
+      expect(message(mariam)).toBe("Giorgi jumped to 1:05");
+    });
+
+    it.runIf(sourceCanSetRate(source))("tells the other Viewer about a new speed", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      giorgi.player!.controls.setSpeed(1.25);
+      h.advance(SECOND);
+      expect(message(mariam)).toBe("Giorgi changed the speed to 1.25×");
+    });
+
+    it("goes away after a few seconds", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      mariam.player!.controls.pause();
+      h.advance(SECOND);
+      expect(message(giorgi)).not.toBeNull();
+
+      h.advance(10 * SECOND);
+      expect(message(giorgi)).toBeNull();
     });
   });
 

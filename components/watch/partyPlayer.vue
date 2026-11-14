@@ -5,6 +5,7 @@
  * keyed on the Watch Party, while this device takes part.
  */
 import { VIEWER_NAMES } from "~/models/Viewer";
+import { describeChange } from "~/realtime/watchParty/changeMessage";
 import { getSource } from "~/utils/sources";
 
 const watchParty = useWatchParty();
@@ -36,6 +37,12 @@ const sourceName = computed(() => getSource(party.value.source).name);
             </div>
             <div v-else-if="view.gettingReady" class="rounded-lg bg-black/80 px-6 py-4 text-xl">Getting ready…</div>
             <div v-else-if="view.player === 'loading'" class="text-center">Loading {{ sourceName }}…</div>
+        </div>
+        <!-- "Mariam paused at 1:02:14": the other Viewer's change, for a few seconds. -->
+        <div class="absolute top-16 left-1/2 -translate-x-1/2" aria-live="polite">
+            <div v-if="view.lastChange" class="rounded-lg bg-black/80 px-4 py-2 whitespace-nowrap">
+                {{ describeChange(view.lastChange) }}
+            </div>
         </div>
         <template #controls>
             <span class="px-2 text-muted-color">Watching together on {{ sourceName }}</span>

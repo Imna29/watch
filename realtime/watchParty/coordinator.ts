@@ -231,6 +231,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               phase: { name: "inviting" },
               anchor: { position: 0, serverTime: now, playing: false, rate: 1 },
               lastChangeBy: from.viewer,
+              lastChange: null,
               activeDevices,
             });
           },
@@ -279,7 +280,13 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           schema: playbackSchema,
           handle(from, { partyId, change }) {
             if (party?.id !== partyId || !takesPlaybackChanges(party.phase)) return;
-            publish({ ...party, ...afterPlaybackChange(party, change, context.now()), lastChangeBy: from.viewer });
+            publish({
+              ...party,
+              ...afterPlaybackChange(party, change, context.now()),
+              lastChangeBy: from.viewer,
+              // The seq `publish` gives this state.
+              lastChange: { ...change, by: from.viewer, seq: seq + 1 },
+            });
           },
         },
       }),

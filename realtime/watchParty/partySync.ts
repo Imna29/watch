@@ -14,12 +14,20 @@ import type { Playable } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
-import { takesPlaybackChanges, type PlaybackAnchor, type WatchPartyState } from "./protocol";
+import {
+  takesPlaybackChanges,
+  type PlaybackAnchor,
+  type WatchPartyChange,
+  type WatchPartyState,
+} from "./protocol";
 import type { PlayerEvent, PlayerFrame, SyncableSourceAdapter } from "./sources/adapter";
 import { hasAdapter, SYNCABLE_SOURCE_ADAPTERS } from "./sources";
 
 /** A player this close to where it should be is left alone; further off, it is moved. */
 const SEEK_TOLERANCE_S = 0.5;
+
+/** How long the other Viewer's change message stays. */
+const CHANGE_MESSAGE_MS = 5000;
 
 export interface PartySyncView {
   /** The Source's player: loading the Title, ready, or failed to load it. */
@@ -30,6 +38,11 @@ export interface PartySyncView {
   countdown: number | null;
   /** Both Viewers are in, but a player is still loading: the countdown has not begun. */
   gettingReady: boolean;
+  /**
+   * The other Viewer's latest change, for a few seconds after it
+   * (`describeChange` in `./changeMessage.ts` words it); null otherwise.
+   */
+  lastChange: WatchPartyChange | null;
 }
 
 export interface PartySync {
@@ -127,7 +140,13 @@ export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
 export function createPartySync({ watchParty, client, clock, frame, readyTimeoutMs }: PartySyncOptions): PartySync {
   const listeners = new Set<() => void>();
   let adapter: SyncableSourceAdapter | null = null;
-  let view: PartySyncView = { player: "loading", waitingFor: null, countdown: null, gettingReady: false };
+  let view: PartySyncView = {
+    player: "loading",
+    waitingFor: null,
+    countdown: null,
+    gettingReady: false,
+    lastChange: null,
+  };
   /**
    * The player as last heard from it (or as last told: commands count as
    * done until the player says otherwise). `position` is at `at`, on this
@@ -138,6 +157,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   let countdownTimer: TimerId | null = null;
   /** The Watch Party this device last said its player is ready for. */
   let reportedReadyFor: string | null = null;
+  /** The shared state last looked at for a change message, by `seq`. */
+  let seenSeq: number | null = null;
+  let changeTimer: TimerId | null = null;
   let destroyed = false;
 
   function setView(next: Partial<PartySyncView>) {
@@ -304,6 +326,23 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     countdownTimer = clock.setTimeout(countDown, remaining - (secondsLeft - 1) * 1000);
   }
 
+  /**
+   * "Mariam paused at 1:02:14": shows the other Viewer's change for a few
+   * seconds, once, when the state that made it arrives.
+   */
+  function tellChange(party: WatchPartyState) {
+    if (party.seq === seenSeq) return;
+    seenSeq = party.seq;
+    const change = party.lastChange;
+    if (!change || change.seq !== party.seq || change.by === client.identity?.viewer) return;
+    if (changeTimer !== null) clock.clearTimeout(changeTimer);
+    setView({ lastChange: change });
+    changeTimer = clock.setTimeout(() => {
+      changeTimer = null;
+      setView({ lastChange: null });
+    }, CHANGE_MESSAGE_MS);
+  }
+
   function followParty() {
     const party = live();
     if (destroyed || !party) return;
@@ -311,6 +350,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       waitingFor: party.phase.name === "inviting" ? otherViewer(party.starter) : null,
       gettingReady: party.phase.name === "countdown" && party.phase.endsAt === null,
     });
+    tellChange(party);
     reportReady();
     countDown();
   }
@@ -334,6 +374,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       destroyed = true;
       stopFollowing();
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
+      if (changeTimer !== null) clock.clearTimeout(changeTimer);
       adapter?.destroy();
       adapter = null;
       listeners.clear();
