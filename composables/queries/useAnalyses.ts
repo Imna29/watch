@@ -3,6 +3,10 @@ import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
 import { writeAnalysisMutation } from './writeAnalysisMutation'
 
+// The other Viewer changes Analyses from their own device, and nothing tells
+// this one, so these queries are stale at once (not after the app's 5
+// minutes, `plugins/vue-query.ts`): a page that shows them reads them again
+// when it mounts.
 export const analysisOptions = {
   /** Every Analysis in list order, with the average Grade (null while none is graded) and the count to grade. */
   list: () =>
@@ -12,6 +16,7 @@ export const analysisOptions = {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getAnalyses()
       },
+      staleTime: 0,
     }),
   /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
   toGrade: () =>
@@ -22,6 +27,11 @@ export const analysisOptions = {
         const { count } = await watchRepository($apiClient).getAnalysesToGrade()
         return count
       },
+      staleTime: 0,
+      // The header that shows it stays mounted, so it reads it again every
+      // minute and whenever the window comes back into focus.
+      refetchInterval: 60 * 1000,
+      refetchOnWindowFocus: true,
     }),
   /** The movie's Analysis, or null when it has none. */
   byMovie: (movieId: MaybeRefOrGetter<number>) =>
@@ -32,6 +42,7 @@ export const analysisOptions = {
         const { analysis } = await watchRepository($apiClient).getAnalysis(toValue(movieId))
         return analysis
       },
+      staleTime: 0,
     }),
 }
 
