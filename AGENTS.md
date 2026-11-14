@@ -70,6 +70,13 @@ and imported explicitly. A feature lives in `realtime/<feature>/`:
   network and clock). Assert what devices receive. Code that awaits between
   timers needs `await h.advanceAsync(ms)`.
 
+The server names each connection (`DeviceId`, new every time), but a Device
+(browser tab) keeps one `DeviceKey` across reconnects and reloads. The browser
+holds it in sessionStorage (`plugins/realtime.client.ts`), the device client
+sends it in the WebSocket URL, and features get it as `Device.key`. Seam 1
+devices use their name as key, and `device.reload()` opens a new page in the
+same tab.
+
 The Call (`realtime/call/`) is peer-to-peer WebRTC; the coordinator only
 relays setup between the two Viewers' Call devices. The browser's media and
 `RTCPeerConnection` come in through `CallPlatform` (`realtime/call/platform.ts`):
@@ -116,6 +123,30 @@ Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
 Party ends ("left") and the other device keeps its player open
 (`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
 Party sync stays bound to the Watch Party it opened for.
+Staying in step (`drift.ts` on the server):
+- Party sync reports its player's position on the server's clock every
+  second (`watchParty:position`). It skips the report while a seek is on its
+  way and at the end of the Title.
+- Under 0.5 s off is left alone. Further off, the coordinator tells that
+  device to catch up (`watchParty:catchUp`).
+- More than 2 s behind, or `stalled`, the Watch Party goes to the `waiting`
+  phase, frozen where it was. `stalled` means no time update for 2 s, or a
+  play command the browser refused, which shows "Click to resume". The Viewer
+  who fell behind plays on up to the frozen point; once every player is
+  there, all start again at one moment just ahead.
+- An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
+  for the same way, from where it left. A waiting invite ends instead
+  ("gone").
+- The Device a Viewer takes part from rejoins when it connects again (same
+  `DeviceKey`): the coordinator points `activeDevices` at its new connection.
+  While the Watch Party waits for a Viewer whose device is gone, any device
+  of theirs that connects takes its place.
+- `device.ts` decides `activeHere` by the connection it heard the state on,
+  so a new `welcome` does not close the player before the state that follows.
+- A Tab Share is left alone: it stands still anyway, and position reports
+  are among the intents it ignores. Its sharer keeps sharing across a
+  reconnect (same Device). A reload loses the tab, so the reloaded page stops
+  the Tab Share and both go back to the Syncable Source.
 Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
 `watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
 sharer, Source, sound). It stands still, paused, and the coordinator ignores

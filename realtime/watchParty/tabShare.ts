@@ -67,12 +67,13 @@ export function afterTabShareStarted(
 
 /**
  * The intents about a Syncable Source's player: its status, playback in it,
- * its end, and switching it. In Tab Share there is no such player, so they
- * are ignored.
+ * where it is, its end, and switching it. In Tab Share there is no such
+ * player, so they are ignored.
  */
 const ABOUT_THE_SYNCABLE_PLAYER: ReadonlySet<DeviceMessageType> = new Set([
   "watchParty:player",
   "watchParty:playback",
+  "watchParty:position",
   "watchParty:ended",
   "watchParty:source",
 ]);

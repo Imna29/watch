@@ -85,9 +85,10 @@ const BLANK_VIEW = {
 /**
  * Party sync (`realtime/watchParty/partySync.ts`) for the Watch Party player
  * whose Source iframe is `iframe`. Render the iframe with `src`; `view` is
- * what to show over it. Runs while `enabled` (not in Tab Share, where no
- * Syncable Source plays: `src` is then empty, and `view` the last one), and
- * stops when the calling component unmounts.
+ * what to show over it; `resume` is the "Click to resume" button's click.
+ * Runs while `enabled` (not in Tab Share, where no Syncable Source plays:
+ * `src` is then empty, and `view` the last one), and stops when the calling
+ * component unmounts.
  */
 export function usePartySync(
   iframe: Readonly<Ref<HTMLIFrameElement | null | undefined>>,
@@ -145,5 +146,5 @@ export function usePartySync(
   );
   onScopeDispose(stop);
 
-  return { src: readonly(src), view: shallowReadonly(view) };
+  return { src: readonly(src), view: shallowReadonly(view), resume: () => sync?.resume() };
 }

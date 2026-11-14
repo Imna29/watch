@@ -6,6 +6,28 @@ export const REALTIME_PATH = "/realtime";
 /** One connection of one Viewer's device, as named by the server. */
 export type DeviceId = string;
 
+/**
+ * Names one Device (a browser tab) across its connections: it stays the same
+ * when the device reconnects or the page reloads (the browser keeps it in
+ * the tab's sessionStorage). The device sends it in the WebSocket URL's
+ * `DEVICE_KEY_PARAM`. Only meaningful together with the Viewer.
+ */
+export type DeviceKey = string;
+
+export const DEVICE_KEY_PARAM = "device";
+
+const DEVICE_KEY_PATTERN = /^[\w-]{1,100}$/;
+
+/** The device key in a realtime WebSocket URL (absolute, or a path); null when it has none or a malformed one. */
+export function deviceKeyIn(url: string): DeviceKey | null {
+  try {
+    const key = new URL(url, "http://localhost").searchParams.get(DEVICE_KEY_PARAM);
+    return key !== null && DEVICE_KEY_PATTERN.test(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How often a device pings the server, to keep its clock estimate fresh and show it is alive. */
 export const PING_INTERVAL_MS = 2000;
 /**

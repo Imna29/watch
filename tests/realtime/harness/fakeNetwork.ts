@@ -9,6 +9,7 @@
  * directions, like a pulled cable. Nobody is told; both ends must notice.
  */
 import type { Viewer } from "../../../models/Viewer";
+import { deviceKeyIn } from "../../../realtime/connection/protocol";
 import type { Coordinator, Outgoing } from "../../../realtime/coordinator";
 import type { OpenSocket, SocketEvents } from "../../../realtime/deviceClient";
 import type { DeviceId, ServerMessage } from "../../../realtime/protocol";
@@ -97,7 +98,7 @@ export function createFakeServer(clock: FakeClock, options: Omit<RealtimeServerO
         }, link.delayMs);
       }
 
-      return (_url: string, events: SocketEvents) => {
+      return (url: string, events: SocketEvents) => {
         traffic.connectionAttempts.push(clock.now());
         // The device stops hearing from a socket once it closed it, or after its close event.
         let finished = false;
@@ -138,7 +139,7 @@ export function createFakeServer(clock: FakeClock, options: Omit<RealtimeServerO
           };
           connection = current;
           connections.set(id, current);
-          deliver(coordinator.connected({ id, viewer }));
+          deliver(coordinator.connected({ id, viewer, key: deviceKeyIn(url) ?? id }));
         });
 
         return {

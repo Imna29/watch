@@ -336,4 +336,58 @@ describe.each(syncableSourcesUnderTest())("Tab Share in a Watch Party on %s", (s
     expect(giorgi.call.state.tab.sharing).toBe(false);
     expect(seesTab(mariam)).toBeNull();
   });
+
+  describe("when a Viewer's connection drops", () => {
+    it("goes on while the watching Viewer is away, and they see the tab again once back", async () => {
+      const { h, giorgi, mariam } = await watchingTogether();
+      mariam.tabShare.start("vidsrc-cc");
+      await h.advanceAsync(SECOND);
+      expect(seesTab(giorgi)).toBe("mariam1 tab");
+
+      giorgi.drop();
+      await h.advanceAsync(20 * SECOND);
+      // A Tab Share stands still anyway: nobody is waited for.
+      expect(mariam.watchParty.party).toMatchObject({ mode: "tab-share", phase: { name: "paused" } });
+      expect(mariam.call.state.tab.sharing).toBe(true);
+
+      giorgi.restore();
+      await h.advanceAsync(30 * SECOND);
+      expect(giorgi.watchParty.party).toMatchObject({ mode: "tab-share", phase: { name: "paused" } });
+      expect(seesTab(giorgi)).toBe("mariam1 tab");
+    });
+
+    it("goes on while the sharer is away, and the other Viewer sees the tab again once she is back", async () => {
+      const { h, giorgi, mariam } = await watchingTogether();
+      mariam.tabShare.start("vidsrc-cc");
+      await h.advanceAsync(SECOND);
+
+      mariam.drop();
+      await h.advanceAsync(20 * SECOND);
+      expect(giorgi.watchParty.party).toMatchObject({ mode: "tab-share", phase: { name: "paused" } });
+
+      mariam.restore();
+      await h.advanceAsync(30 * SECOND);
+      expect(mariam.tabShare.state.sharingHere).toBe(true);
+      expect(giorgi.watchParty.party).toMatchObject({ mode: "tab-share", phase: { name: "paused" } });
+      expect(seesTab(giorgi)).toBe("mariam1 tab");
+    });
+  });
+
+  it("stops when the sharer reloads the page, which ends the tab's sharing: both go back to the Syncable Source", async () => {
+    const { h, giorgi, mariam } = await watchingTogether();
+    mariam.tabShare.start("vidsrc-cc");
+    await h.advanceAsync(SECOND);
+    const position = giorgi.watchParty.party!.anchor.position;
+
+    const reloaded = mariam.reload();
+    await h.advanceAsync(30 * SECOND);
+
+    for (const device of [giorgi, reloaded]) {
+      expect(device.watchParty.party).toMatchObject({ mode: "syncable-source", tabShare: null, phase: { name: "paused" } });
+      expect(device.player).toMatchObject({ sourceId: source, ready: true, paused: true });
+      expect(device.player!.position).toBeCloseTo(position, 0);
+    }
+    expect(reloaded.watchParty.activeHere).toBe(true);
+    expect(seesTab(giorgi)).toBeNull();
+  });
 });

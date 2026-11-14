@@ -9,7 +9,7 @@ import type { SourceId } from "../../utils/sources";
 import type { DeviceId } from "../connection/protocol";
 import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
-import type { Episode, PlaybackChange, WatchPartyEndReason, WatchPartyState } from "./protocol";
+import type { Episode, PlaybackChange, PositionMessage, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
 /**
  * How a Watch Party this device knew about ended, told to the Viewer who
@@ -96,6 +96,8 @@ export interface DeviceWatchParty {
   playerFailed(partyId: string, episode: Episode | null, source: SourceId): void;
   /** Party sync: the Viewer changed playback in this device's player. */
   playback(partyId: string, change: PlaybackChange): void;
+  /** Party sync: where this device's player is, to keep the players in step (`./drift.ts`). */
+  reportPosition(report: Omit<PositionMessage, "type">): void;
   /**
    * Party sync: this device's player reached the end of the Title (of
    * `episode`, for a TV show) at `position`, and `next` comes after it
@@ -137,8 +139,15 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
   let starting: { title: TitleRef; episode: Episode | null } | null = null;
   /** The Watch Party that was in the way of `starting`. */
   let inTheWay: WatchPartyState | null = null;
-  /** The Watch Party this device last took part in, and the device id it had then. */
-  let tookPart: { partyId: string; deviceId: DeviceId } | null = null;
+  /** The Watch Party this device last took part in. */
+  let tookPartIn: string | null = null;
+  /**
+   * The connection this device had when it heard `party`: the id the shared
+   * state knows it by. A new connection keeps the player going until the
+   * state it brings says otherwise (a Device that reconnected or reloaded
+   * takes part again from its new connection).
+   */
+  let heardOn: DeviceId | null = null;
   /** The Watch Party the other Viewer left, whose player this device keeps open until the Viewer stops. */
   let stayedIn: WatchPartyState | null = null;
   let left: LeftNotice | null = null;
@@ -164,23 +173,22 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
   function activeHere() {
     const active = activeDevice();
-    return active !== null && active === client.identity?.deviceId;
+    return active !== null && active === heardOn;
   }
 
   function elsewhere() {
     const active = activeDevice();
-    return active !== null && active !== client.identity?.deviceId ? live() : null;
+    return active !== null && active !== heardOn ? live() : null;
   }
 
   /** Remembers the Watch Party this device takes part in, to tell when another device takes it over. */
   function rememberTakingPart() {
-    const identity = client.identity;
-    if (party && identity && activeHere()) tookPart = { partyId: party.id, deviceId: identity.deviceId };
+    if (party && activeHere()) tookPartIn = party.id;
   }
 
   function continuedElsewhere() {
     const current = elsewhere();
-    return !!current && tookPart?.partyId === current.id && tookPart.deviceId === client.identity?.deviceId;
+    return !!current && tookPartIn === current.id;
   }
 
   /** Moves the Watch Party this Viewer takes part in from another device to this one. */
@@ -228,6 +236,7 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       newestSeq = message.party.seq;
     }
     party = message.party;
+    heardOn = client.identity?.deviceId ?? null;
     rememberTakingPart();
     const phase = party?.phase;
     const viewer = me();
@@ -237,7 +246,7 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       phase.reason === "left" &&
       viewer !== null &&
       phase.by !== viewer &&
-      party?.activeDevices[viewer] === client.identity?.deviceId;
+      party?.activeDevices[viewer] === heardOn;
     if (party && phase?.name === "ended" && leftHere) {
       stayedIn = party;
       left = { title: party.title, episode: party.episode, by: phase.by };
@@ -350,6 +359,10 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
     playback(partyId, change) {
       client.send({ type: "watchParty:playback", partyId, change });
+    },
+
+    reportPosition(report) {
+      client.send({ type: "watchParty:position", ...report });
     },
 
     titleEnded(partyId, episode, position, next) {

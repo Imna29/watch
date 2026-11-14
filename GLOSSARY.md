@@ -9,7 +9,7 @@ Giorgi or Mariam, the only two people who can use the site. Each signs in with t
 _Avoid_: User, member, account
 
 **Device**:
-One browser tab where a Viewer has the site open, holding one realtime connection. A Viewer can have several at once.
+One browser tab where a Viewer has the site open, holding one realtime connection at a time. It stays the same Device when it reconnects or the page reloads. A Viewer can have several at once.
 _Avoid_: Client, session, connection
 
 ## Watching

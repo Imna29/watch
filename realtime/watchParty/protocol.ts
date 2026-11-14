@@ -27,6 +27,13 @@ export interface PlaybackAnchor {
   rate: number;
 }
 
+/** Where `anchor` says the player should be at `serverTime`. */
+export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
+  const playing = anchor.playing && serverTime >= anchor.serverTime;
+  const elapsed = playing ? ((serverTime - anchor.serverTime) / 1000) * anchor.rate : 0;
+  return { playing, position: anchor.position + elapsed };
+}
+
 /** Why a Watch Party ended. */
 export type WatchPartyEndReason =
   /** A Viewer pressed Cancel (or closed the player) and ended it for both. */
@@ -36,7 +43,9 @@ export type WatchPartyEndReason =
   /** The movie, or the TV show's final episode, ended. */
   | "finished"
   /** A Viewer closed the player: the other Viewer keeps watching alone, or stops. */
-  | "left";
+  | "left"
+  /** The starter's device went away while the Watch Party still waited for the other Viewer. */
+  | "gone";
 
 /**
  * What the Watch Party is doing. In order:
@@ -222,6 +231,25 @@ export interface SwitchSourceMessage {
 }
 
 /**
+ * Where this device's player is, sent every `POSITION_REPORT_MS` (`./drift.ts`)
+ * so the coordinator can keep the players in step: `position` seconds into
+ * the Title at `serverTime`, on the server's clock, while following the
+ * shared state numbered `seq`.
+ */
+export interface PositionMessage {
+  type: "watchParty:position";
+  partyId: string;
+  seq: number;
+  position: number;
+  serverTime: number;
+  /**
+   * The player should be playing but does not move: its stream stalled, or
+   * the browser would not start it until the Viewer clicks (after a reload).
+   */
+  stalled: boolean;
+}
+
+/**
  * This device's player reached the end of the Title (for a TV show: of
  * `episode`), at `position` seconds.
  */
@@ -283,6 +311,16 @@ export interface AlreadyStartedMessage {
   party: WatchPartyState;
 }
 
+/**
+ * This device's player drifted from the shared state numbered `seq`: move it
+ * to where the shared state is now.
+ */
+export interface CatchUpMessage {
+  type: "watchParty:catchUp";
+  partyId: string;
+  seq: number;
+}
+
 export type WatchPartyDeviceMessage =
   | StartWatchPartyMessage
   | JoinWatchPartyMessage
@@ -292,10 +330,11 @@ export type WatchPartyDeviceMessage =
   | PlaybackMessage
   | ChangeEpisodeMessage
   | SwitchSourceMessage
+  | PositionMessage
   | TitleEndedMessage
   | CancelNextEpisodeMessage
   | LeaveWatchPartyMessage
   | TabShareMessage
   | StopTabShareMessage;
 
-export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;
+export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage | CatchUpMessage;

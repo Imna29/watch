@@ -32,6 +32,13 @@ export interface FakePlayerOptions {
   /** The browser does not let the player start on its own: it waits, paused, for a command. */
   noAutoplay?: boolean;
   /**
+   * The browser will not let the player start with sound until the Viewer
+   * clicks in the page (as after a page reload): no autoplay, and the site's
+   * play commands do nothing, until `FakeFrame.click()` or a press on the
+   * player's own play button.
+   */
+  blocksPlayUntilClick?: boolean;
+  /**
    * How long a seek takes to buffer: the video stands still at the new
    * position meanwhile, and "seeked" comes only after it. Default: at once.
    */
@@ -76,6 +83,12 @@ export interface FakeSourcePlayer {
   /** The Viewer in front of this player, using the Source's own controls. */
   readonly controls: FakePlayerControls;
   /**
+   * The stream stalls for `ms` (the network is slow): the video stands still
+   * and posts no `timeupdate` until it has buffered, then plays on (if it is
+   * not paused).
+   */
+  stall(ms: number): void;
+  /**
    * Posts what tells the site this Source's player is ready (CineSrc's
    * "ready" message, VidFast's status), from `origin` instead of the
    * Source's own: what a page the iframe was sent to (an ad, say) could post.
@@ -87,6 +100,8 @@ export interface FakeSourcePlayer {
 export interface FakeFrame extends PlayerFrame {
   /** The player in the frame now; null before anything loaded and after `remove()`. */
   readonly player: FakeSourcePlayer | null;
+  /** The Viewer clicks in the page (a button over the player, say): from then on the browser lets the player start. */
+  click(): void;
   /** The iframe is removed from the page. */
   remove(): void;
 }
@@ -315,6 +330,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
   const listeners = new Set<(origin: string, data: unknown) => void>();
   let current: { player: FakeSourcePlayer; receive(data: unknown, targetOrigin: string): void; stop(): void } | null =
     null;
+  /** Whether the Viewer has clicked in the page, which `blocksPlayUntilClick` waits for. */
+  let clicked = false;
 
   /** postMessage is asynchronous, and the receiver gets a structured clone. */
   function later(deliver: () => void) {
@@ -341,6 +358,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
     let loading: unknown = null;
     /** While a seek buffers (`seekMs`): the timer that ends it. The video stands still meanwhile. */
     let seeking: unknown = null;
+    /** While the stream stalls (`stall`): the timer that ends it. The video stands still meanwhile. */
+    let stalled: unknown = null;
 
     function postToSite(origin: string, data: unknown) {
       if (data === null) return;
@@ -362,7 +381,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
 
     function tick() {
       ticker = clock.setTimeout(() => {
-        post("timeupdate");
+        // A seeking or stalled video's time does not move, so it reports none (a seek's comes with "seeked").
+        if (seeking === null && stalled === null) post("timeupdate");
         tick();
       }, dialect.timeupdateMs);
     }
@@ -397,7 +417,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         return paused;
       },
       get position() {
-        const elapsed = paused || seeking !== null ? 0 : ((clock.now() - since) / 1000) * rate;
+        const elapsed = paused || seeking !== null || stalled !== null ? 0 : ((clock.now() - since) / 1000) * rate;
         return Math.min(duration, base + elapsed);
       },
       get rate() {
@@ -464,8 +484,27 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       action();
     }
 
+    /** Whether the browser lets the player start with sound when the site asks it to. */
+    function mayStart() {
+      return !options.blocksPlayUntilClick || clicked;
+    }
+
+    /** The video as the site's commands reach it: a play the browser refuses does nothing at all. */
+    const commanded: FakeVideo = Object.create(video, {
+      play: {
+        value() {
+          if (mayStart()) video.play();
+        },
+      },
+    });
+
     const controls: FakePlayerControls = {
-      play: () => press(() => video.play()),
+      // A press inside the player is a click the browser lets start it.
+      play: () =>
+        press(() => {
+          clicked = true;
+          video.play();
+        }),
       pause: () => press(() => video.pause()),
       seek: (position) => press(() => video.seek(position)),
       setSpeed: (next) => press(() => video.setRate(next)),
@@ -505,6 +544,15 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       },
       duration,
       controls,
+      stall(ms) {
+        if (!ready) throw new Error("A stream can only stall once the player is ready.");
+        settle();
+        if (stalled !== null) clock.clearTimeout(stalled);
+        stalled = clock.setTimeout(() => {
+          stalled = null;
+          since = clock.now();
+        }, ms);
+      },
       postReadyFrom(origin) {
         postToSite(origin, dialect.readySignal(video));
       },
@@ -520,7 +568,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         ready = true;
         settle();
         post("ready");
-        if (autoplay && !options.noAutoplay) video.play();
+        if (autoplay && !options.noAutoplay && mayStart()) video.play();
       }, options.loadMs ?? DEFAULT_LOAD_MS);
     }
 
@@ -529,13 +577,14 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       receive(data: unknown, targetOrigin: string) {
         if (stopped || !ready) return; // The players only listen once ready.
         if (targetOrigin !== "*" && targetOrigin !== url.origin) return;
-        dialect.receive(data, video, (answer) => postToSite(url.origin, answer));
+        dialect.receive(data, commanded, (answer) => postToSite(url.origin, answer));
       },
       stop() {
         stopped = true;
         stopTicking();
         if (loading !== null) clock.clearTimeout(loading);
         if (seeking !== null) clock.clearTimeout(seeking);
+        if (stalled !== null) clock.clearTimeout(stalled);
         if (ending !== null) clock.clearTimeout(ending);
       },
     };
@@ -544,6 +593,10 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
   return {
     get player() {
       return current?.player ?? null;
+    },
+
+    click() {
+      clicked = true;
     },
 
     load(url) {

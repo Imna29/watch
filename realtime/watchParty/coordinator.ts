@@ -9,6 +9,7 @@ import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
 import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
+import type { DeviceKey } from "../connection/protocol";
 import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
 import type { TitleRef } from "../presence/protocol";
@@ -25,6 +26,7 @@ import type {
   WatchPartyState,
 } from "./protocol";
 import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
+import { keepInStep, positionSchema } from "./drift";
 import { afterEpisodeEnded, titleEndedSchema } from "./ending";
 import { afterEpisodeChange, afterPlaybackChange, episodeSchema, playbackSchema, sameEpisode } from "./sharedControls";
 import {
@@ -131,6 +133,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     let party: WatchPartyState | null = null;
     /** The devices whose player has the current Watch Party's Title loaded. */
     let readyDevices = new Set<DeviceId>();
+    /**
+     * The Device (by key) each Viewer takes part from: when it comes back on a
+     * new connection, it takes part again from there (`rejoin`).
+     */
+    let seatKeys: Partial<Record<Viewer, DeviceKey>> = {};
     let seq = 0;
     let partyCount = 0;
 
@@ -141,6 +148,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         context.send(device.id, { type: "watchParty", party });
       }
     }
+
+    const inStep = keepInStep({ context, party: () => party, publish, end });
 
     /** Ends the Watch Party for both Viewers; devices hear why, then it is gone. */
     function end(reason: WatchPartyEndReason, by: Viewer) {
@@ -159,6 +168,37 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       return current.phase.name === "inviting" && device.viewer === current.starter;
     }
 
+    /** `device` becomes its Viewer's active device: returns its id for `activeDevices`. */
+    function takeSeat(device: Device) {
+      seatKeys[device.viewer] = device.key;
+      return device.id;
+    }
+
+    /**
+     * Whether `device`, just connected, takes part in the Watch Party in
+     * place of its Viewer's active device: it is that Device, back on a new
+     * connection (it reconnected, or its page reloaded); or the Watch Party
+     * waits for its Viewer, whose active device is gone.
+     */
+    function rejoins(device: Device, current: WatchPartyState) {
+      const seat = current.activeDevices[device.viewer];
+      if (seat === null || seat === device.id) return false;
+      const { phase } = current;
+      const waitedFor = phase.name === "waiting" && phase.viewer === device.viewer && phase.reason === "disconnected";
+      return seatKeys[device.viewer] === device.key || waitedFor;
+    }
+
+    /** `device` takes part again in its Viewer's place, at the shared position. */
+    function rejoin(device: Device, current: WatchPartyState) {
+      // A reloaded page loads its player anew, and reports when it has.
+      readyDevices.delete(current.activeDevices[device.viewer]!);
+      publish({
+        ...current,
+        ...inStep.rejoined(current, device.viewer),
+        activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) },
+      });
+    }
+
     /**
      * A Viewer who takes part from one device joins from `device`, which
      * becomes their active device. The device it took over from sees that in
@@ -170,7 +210,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       if (previous === null || previous === device.id) return;
       // The new device's player has yet to load: it reports when it has.
       readyDevices.delete(previous);
-      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: device.id } });
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) } });
     }
 
     /**
@@ -226,7 +266,12 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
 
     return {
       connected(device) {
-        context.send(device.id, { type: "watchParty", party });
+        if (party && rejoins(device, party)) rejoin(device, party);
+        else context.send(device.id, { type: "watchParty", party });
+      },
+
+      disconnected(device) {
+        inStep.disconnected(device);
       },
 
       tick() {
@@ -236,6 +281,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         if (party?.phase.name === "next-episode" && context.now() >= party.phase.at) {
           moveToEpisode(party, party.phase.next, null);
         }
+        inStep.tick();
       },
 
       handlers: onlyFromActiveDevices(exceptInTabShare(() => party, {
@@ -255,7 +301,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               Viewer,
               DeviceId | null
             >;
-            activeDevices[from.viewer] = from.id;
+            seatKeys = {};
+            activeDevices[from.viewer] = takeSeat(from);
             readyDevices = new Set();
             publish({
               id: `${now.toString(36)}-${++partyCount}`,
@@ -282,7 +329,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               ...party,
               phase: { name: "countdown", endsAt: null },
               lastChangeBy: from.viewer,
-              activeDevices: { ...party.activeDevices, [from.viewer]: from.id },
+              activeDevices: { ...party.activeDevices, [from.viewer]: takeSeat(from) },
             });
             recordForBoth(party);
             startCountdownWhenReady();
@@ -391,6 +438,14 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               // The seq `publish` gives this state.
               lastChange: { kind: "source", source, by: from.viewer, seq: seq + 1 },
             });
+          },
+        },
+
+        // Staying in step: where the device's player is (from the active device, as `onlyFromActiveDevices` ensures).
+        "watchParty:position": {
+          schema: positionSchema,
+          handle(from, report) {
+            inStep.reported(from, report);
           },
         },
 

@@ -16,11 +16,12 @@ import type { Playable, SourceId } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
+import { POSITION_REPORT_MS } from "./drift";
 import { episodeAfter, type EpisodeGuide } from "./episodeGuide";
 import {
+  anchorAt,
   takesPlaybackChanges,
   type Episode,
-  type PlaybackAnchor,
   type WatchPartyChange,
   type WatchPartyState,
 } from "./protocol";
@@ -32,6 +33,18 @@ const SEEK_TOLERANCE_S = 0.5;
 
 /** How long the other Viewer's change message stays. */
 const CHANGE_MESSAGE_MS = 5000;
+
+/**
+ * A playing player tells its time at least about once a second. One that has
+ * said nothing for this long has stalled.
+ */
+const STALL_MS = 2000;
+
+/** A player that fell behind plays on until it is this close to where the Watch Party waits for it. */
+const CAUGHT_UP_S = 0.1;
+
+/** A player says "play" at once when it starts; one still silent this long after a play command did not start. */
+const PLAY_REFUSED_MS = 2000;
 
 export interface PartySyncView {
   /** The Source's player: loading the Title, ready, or failed to load it. */
@@ -49,12 +62,20 @@ export interface PartySyncView {
   lastChange: WatchPartyChange | null;
   /** "Next episode in 10s · Cancel": the episode both move to, and the seconds left; null otherwise. */
   nextEpisode: { episode: Episode; secondsLeft: number } | null;
+  /**
+   * "Click to resume": the browser would not start the player (after a page
+   * reload it may refuse until the Viewer clicks in the page). The Watch
+   * Party waits for this Viewer meanwhile. The button calls `resume()`.
+   */
+  clickToResume: boolean;
 }
 
 export interface PartySync {
   readonly view: PartySyncView;
   /** Calls `listener` after every change of `view`. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
+  /** "Click to resume" was clicked: the player may start now. Call it from the click itself. */
+  resume(): void;
   /** Stops controlling the player; the caller then removes it. */
   destroy(): void;
 }
@@ -132,18 +153,19 @@ function createEchoes(clock: Clock) {
       return { latest: !expected.some((echo) => channelOf(echo.type) === channel) };
     },
 
+    /** Whether a command that reports `type` is still on its way. */
+    awaiting(type: Echo["type"]) {
+      const now = clock.now();
+      return expected.some((echo) => echo.type === type && echo.until > now);
+    },
+
     clear() {
       expected = [];
     },
   };
 }
 
-/** Where `anchor` says the player should be at `serverTime`. */
-export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
-  const playing = anchor.playing && serverTime >= anchor.serverTime;
-  const elapsed = playing ? ((serverTime - anchor.serverTime) / 1000) * anchor.rate : 0;
-  return { playing, position: anchor.position + elapsed };
-}
+export { anchorAt };
 
 export function createPartySync({
   watchParty,
@@ -162,26 +184,36 @@ export function createPartySync({
     gettingReady: false,
     lastChange: null,
     nextEpisode: null,
+    clickToResume: false,
   };
   /**
    * The player as last heard from it (or as last told: commands count as
    * done until the player says otherwise). `position` is at `at`, on this
-   * device's clock.
+   * device's clock. A `stalled` player stands still although not paused.
    */
-  const player = { paused: true, position: 0, at: clock.now(), rate: 1 };
+  const player = { paused: true, position: 0, at: clock.now(), rate: 1, stalled: false };
   const echoes = createEchoes(clock);
   let countdownTimer: TimerId | null = null;
   /** What the frame has loaded: the Source and what it plays (see `load`). */
   let loaded: string | null = null;
   let loadedEpisode: Episode | null = null;
   let loadedSource: SourceId | null = null;
-  /** What this device last told the coordinator about its player (see `reportPlayer`). */
-  let reported: { partyId: string; player: "ready" | "failed" } | null = null;
+  /** What this device last told the coordinator about its player, and on which connection (see `reportPlayer`). */
+  let reported: { partyId: string; player: "ready" | "failed"; on: string | null } | null = null;
   /** The shared state last looked at for a change message, by `seq`. */
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
+  let reportTimer: TimerId | null = null;
+  let startTimer: TimerId | null = null;
+  /** While a play command waits for the player's "play": the timer that gives up on it. */
+  let playTimer: TimerId | null = null;
   /** The loaded Title's length, once the player reported it. */
   let duration: number | null = null;
+  /**
+   * The player stopped at the end of what it plays. It stays there (nothing
+   * to play, no drift to report) until the shared state wants it earlier on.
+   */
+  let stoppedAtTheEnd = false;
   let nextEpisodeTimer: TimerId | null = null;
   let destroyed = false;
 
@@ -205,29 +237,88 @@ export function createPartySync({
   }
 
   function playerPosition() {
-    return player.paused ? player.position : player.position + ((clock.now() - player.at) / 1000) * player.rate;
+    if (player.paused || player.stalled) return player.position;
+    return player.position + ((clock.now() - player.at) / 1000) * player.rate;
   }
 
   function playerIsAt(position: number) {
     player.position = position;
     player.at = clock.now();
+    player.stalled = false;
+  }
+
+  /** Whether the Watch Party waits for this device's Viewer to catch up. */
+  function waitingForMe(party: WatchPartyState) {
+    return party.phase.name === "waiting" && party.phase.viewer === client.identity?.viewer;
+  }
+
+  /**
+   * Where the player should be now: where the shared state is. While the
+   * Watch Party waits for this Viewer, a player that fell behind plays on up
+   * to where the others wait, instead of jumping there: nobody misses anything.
+   */
+  function wantedNow(party: WatchPartyState) {
+    const wanted = anchorAt(party.anchor, client.serverNow());
+    const behind = waitingForMe(party) && playerPosition() < wanted.position - CAUGHT_UP_S;
+    return behind ? { playing: true, position: playerPosition() } : wanted;
+  }
+
+  /**
+   * Whether a player that stopped at the end stays there, when the shared
+   * state wants it at `position`: the shared state goes on past the end until
+   * the coordinator hears it ended.
+   */
+  function staysAtTheEnd(position: number) {
+    if (stoppedAtTheEnd && duration !== null && position < duration - END_TOLERANCE_S) stoppedAtTheEnd = false;
+    return stoppedAtTheEnd;
+  }
+
+  /** Moves the player to where the shared state is now (also when the coordinator says it drifted). */
+  function seekToParty(party: WatchPartyState) {
+    if (!adapter) return;
+    const position = anchorAt(party.anchor, client.serverNow()).position;
+    if (staysAtTheEnd(position)) return;
+    adapter.seek(position);
+    echoes.expect({ type: "seeked", position });
+    playerIsAt(position);
+  }
+
+  /**
+   * Tells the coordinator where the player is, so it can keep the players in
+   * step (`./drift.ts`). Not while a seek is on its way: the player is not
+   * where it is going yet.
+   */
+  function reportPosition() {
+    reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
+    const party = live();
+    if (!party || view.player !== "ready" || stoppedAtTheEnd || echoes.awaiting("seeked")) return;
+    if (!player.paused && !player.stalled && clock.now() - player.at > STALL_MS) player.stalled = true;
+    watchParty.reportPosition({
+      partyId: party.id,
+      seq: party.seq,
+      position: playerPosition(),
+      serverTime: client.serverNow(),
+      stalled: player.stalled || view.clickToResume,
+    });
   }
 
   /** Moves the player to where the shared state says it should be now. */
   function apply() {
     const party = live();
     if (!adapter || view.player !== "ready" || !party) return;
-    const wanted = anchorAt(party.anchor, client.serverNow());
+    const wanted = wantedNow(party);
+    if (staysAtTheEnd(wanted.position)) return;
     if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) {
       adapter.seek(wanted.position);
       echoes.expect({ type: "seeked", position: wanted.position });
       playerIsAt(wanted.position);
     }
-    if (wanted.playing && player.paused) {
+    if (wanted.playing && player.paused && !view.clickToResume) {
       adapter.play();
       echoes.expect({ type: "play" });
       playerIsAt(playerPosition());
       player.paused = false;
+      expectPlayToStart();
     } else if (!wanted.playing && !player.paused) {
       adapter.pause();
       echoes.expect({ type: "pause" });
@@ -270,10 +361,14 @@ export function createPartySync({
         if (!sentAsViewerChange(event)) apply();
         return;
       }
-      case "timeupdate":
+      case "timeupdate": {
         playerIsAt(event.position);
         if (event.duration !== undefined) duration = event.duration;
+        // Catching up: stop where the Watch Party waits.
+        const party = live();
+        if (party && waitingForMe(party)) apply();
         return;
+      }
       case "ended":
         return heardEnded();
       case "error":
@@ -288,6 +383,7 @@ export function createPartySync({
    * to (an echo), or because the Viewer did it in the Source's controls.
    */
   function heardPlayback(event: Extract<PlayerEvent, { type: "play" | "pause" | "ratechange" }>) {
+    if (event.type === "play") playStarted();
     playerIsAt(playerPosition());
     const before = { paused: player.paused, rate: player.rate };
     const echo = echoes.heard(event);
@@ -334,6 +430,7 @@ export function createPartySync({
   function heardEnded() {
     playerIsAt(duration ?? playerPosition());
     player.paused = true;
+    stoppedAtTheEnd = true;
     const party = live();
     if (!party || view.player !== "ready" || !takesPlaybackChanges(party.phase)) return;
     const { id, title } = party;
@@ -395,6 +492,7 @@ export function createPartySync({
     loadedEpisode = party.episode;
     loadedSource = party.source;
     duration = null;
+    stoppedAtTheEnd = false;
     echoes.clear();
     reported = null;
     const startAt = anchorAt(party.anchor, client.serverNow()).position;
@@ -414,14 +512,17 @@ export function createPartySync({
   }
 
   /**
-   * Tells the coordinator, once per Watch Party, that the player is ready,
-   * or that its Source failed (Source fallback then offers the next one).
+   * Tells the coordinator, once per Watch Party (and again on a new
+   * connection: the coordinator knows players by connection), that the
+   * player is ready, or that its Source failed (Source fallback then offers
+   * the next one).
    */
   function reportPlayer() {
     const party = live();
     if (!party || loadedSource === null || view.player === "loading") return;
-    if (reported?.partyId === party.id && reported.player === view.player) return;
-    reported = { partyId: party.id, player: view.player };
+    const on = client.identity?.deviceId ?? null;
+    if (reported?.partyId === party.id && reported.player === view.player && reported.on === on) return;
+    reported = { partyId: party.id, player: view.player, on };
     if (view.player === "ready") watchParty.playerReady(party.id, loadedEpisode, loadedSource);
     else watchParty.playerFailed(party.id, loadedEpisode, loadedSource);
   }
@@ -489,17 +590,66 @@ export function createPartySync({
     }
     load(party);
     setView({
-      waitingFor: party.phase.name === "inviting" ? otherViewer(party.starter) : null,
+      waitingFor: waitingFor(party),
       gettingReady: party.phase.name === "countdown" && party.phase.endsAt === null,
     });
     tellChange(party);
     reportPlayer();
     countDown();
+    startOnTime(party);
     showNextEpisode();
+  }
+
+  /** "Waiting for Mariam…": for the other Viewer to join, or for a Viewer to catch up or come back. */
+  function waitingFor({ phase, starter }: WatchPartyState) {
+    if (phase.name === "inviting") return otherViewer(starter);
+    return phase.name === "waiting" ? phase.viewer : null;
+  }
+
+  /**
+   * After a play command: a player that has not said "play" within
+   * `PLAY_REFUSED_MS` did not start (the browser refused it), so the Viewer
+   * is offered "Click to resume", and the player stays where it was.
+   */
+  function expectPlayToStart() {
+    if (playTimer !== null) return;
+    playTimer = clock.setTimeout(() => {
+      playTimer = null;
+      if (destroyed || view.player !== "ready") return;
+      playerIsAt(player.position);
+      player.paused = true;
+      setView({ clickToResume: true });
+    }, PLAY_REFUSED_MS);
+  }
+
+  /** The player said "play": it can start. */
+  function playStarted() {
+    if (playTimer !== null) clock.clearTimeout(playTimer);
+    playTimer = null;
+    setView({ clickToResume: false });
+  }
+
+  /** Starts the player at the moment the shared state says, so every player starts at once. */
+  function startOnTime(party: WatchPartyState) {
+    if (startTimer !== null) clock.clearTimeout(startTimer);
+    startTimer = null;
+    const wait = party.anchor.serverTime - client.serverNow();
+    if (!party.anchor.playing || wait <= 0) return;
+    startTimer = clock.setTimeout(() => {
+      startTimer = null;
+      apply();
+    }, wait);
   }
 
   followParty();
   const stopFollowing = watchParty.subscribe(followParty);
+  reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
+  // The coordinator saw the player drift from the shared state it reported on: move it there.
+  const stopCatchingUp = client.on("watchParty:catchUp", ({ partyId, seq }) => {
+    const party = live();
+    if (destroyed || view.player !== "ready" || party?.id !== partyId || party.seq !== seq) return;
+    seekToParty(party);
+  });
 
   return {
     get view() {
@@ -511,9 +661,19 @@ export function createPartySync({
       return () => listeners.delete(listener);
     },
 
+    resume() {
+      if (destroyed) return;
+      setView({ clickToResume: false });
+      apply();
+    },
+
     destroy() {
       destroyed = true;
       stopFollowing();
+      stopCatchingUp();
+      if (reportTimer !== null) clock.clearTimeout(reportTimer);
+      if (startTimer !== null) clock.clearTimeout(startTimer);
+      if (playTimer !== null) clock.clearTimeout(playTimer);
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
       if (changeTimer !== null) clock.clearTimeout(changeTimer);
       if (nextEpisodeTimer !== null) clock.clearTimeout(nextEpisodeTimer);

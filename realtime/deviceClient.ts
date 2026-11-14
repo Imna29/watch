@@ -9,7 +9,7 @@
  */
 import type { Viewer } from "../models/Viewer";
 import type { Clock, TimerId } from "./clock";
-import { PING_INTERVAL_MS, SILENCE_LIMIT_MS } from "./connection/protocol";
+import { DEVICE_KEY_PARAM, PING_INTERVAL_MS, SILENCE_LIMIT_MS, type DeviceKey } from "./connection/protocol";
 import type { DeviceId, DeviceMessage, ServerMessage, ServerMessageOf, ServerMessageType } from "./protocol";
 
 /** What a socket reports to the client. */
@@ -31,6 +31,11 @@ export interface DeviceClientOptions {
   url: string | (() => string);
   openSocket: OpenSocket;
   clock: Clock;
+  /**
+   * This device's key (`DeviceKey`), the same across reconnects and page
+   * reloads; sent with every connection.
+   */
+  deviceKey: DeviceKey;
   /** Wait before the first reconnect; each further attempt waits twice as long, up to `maxRetryMs`. */
   firstRetryMs?: number;
   maxRetryMs?: number;
@@ -51,6 +56,8 @@ export type ConnectionStatus = "connecting" | "connected" | "waiting" | "stopped
 
 export interface DeviceClient {
   readonly status: ConnectionStatus;
+  /** This device's key, as given. */
+  readonly deviceKey: DeviceKey;
   /** Who this device is, from the server's latest welcome; null before the first one. */
   readonly identity: DeviceIdentity | null;
   /**
@@ -112,8 +119,9 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
   function connect() {
     retryTimer = null;
     setStatus("connecting");
-    const url = typeof options.url === "function" ? options.url() : options.url;
-    const current: Socket = options.openSocket(url, {
+    const url = new URL(typeof options.url === "function" ? options.url() : options.url);
+    url.searchParams.set(DEVICE_KEY_PARAM, options.deviceKey);
+    const current: Socket = options.openSocket(url.href, {
       message(data) {
         if (socket !== current) return;
         expectSilenceAtMost();
@@ -181,6 +189,8 @@ export function createDeviceClient(options: DeviceClientOptions): DeviceClient {
     get status() {
       return status;
     },
+
+    deviceKey: options.deviceKey,
 
     get identity() {
       return identity;
