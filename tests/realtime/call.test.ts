@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import type { MediaTrack } from "../../realtime/call/platform";
-import { createHarness, SECOND, type TestDevice } from "./harness";
+import type { AdaptedSourceId } from "../../realtime/watchParty/sources";
+import { createHarness, SECOND, syncableSourcesUnderTest, type TestDevice } from "./harness";
 import type { FakeRemoteTrack, FakeTrack } from "./harness/fakeMedia";
 
 /** The microphone this device hears over the Call right now, e.g. "giorgi1 microphone". */
@@ -18,9 +19,11 @@ function sourceOf(track: MediaTrack | null) {
   return (track as FakeRemoteTrack | null)?.source()?.label ?? null;
 }
 
+const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
+
 /** Giorgi and Mariam, one device each, both online. */
-async function bothOnline() {
-  const h = createHarness();
+async function bothOnline(syncableSource?: AdaptedSourceId) {
+  const h = createHarness({ syncableSource });
   const giorgi = h.device("giorgi");
   const mariam = h.device("mariam");
   await h.advanceAsync(SECOND);
@@ -128,14 +131,14 @@ describe("the Call", () => {
   });
 
   describe("without a Watch Party", () => {
-    // No test in this file starts a Watch Party: the Call never needs one.
+    // Only "with a Watch Party" below starts one: the Call never needs one.
     it("stays connected while the Viewers browse and open their own players", async () => {
       const { h, giorgi, mariam } = await bothOnline();
       giorgi.call.join();
       mariam.call.join();
       await h.advanceAsync(SECOND);
 
-      giorgi.presence.setWatching({ contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" });
+      giorgi.presence.setWatching(DUNE);
       mariam.presence.setWatching({ contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" });
       await h.advanceAsync(10 * SECOND);
       giorgi.presence.setWatching(null);
@@ -144,6 +147,78 @@ describe("the Call", () => {
       expect(giorgi.media.peerConnections).toHaveLength(1);
       expect(hears(mariam)).toBe("giorgi1 microphone");
       expect(hears(giorgi)).toBe("mariam1 microphone");
+    });
+  });
+
+  describe.each(syncableSourcesUnderTest())("with a Watch Party on %s", (source) => {
+    /** Giorgi and Mariam, one device each, watching Dune together. */
+    async function watchingTogether() {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam");
+      await h.advanceAsync(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      await h.advanceAsync(SECOND);
+      mariam.watchParty.join();
+      await h.advanceAsync(15 * SECOND);
+      return { h, giorgi, mariam };
+    }
+
+    function expectWatchingInStep(giorgi: TestDevice, mariam: TestDevice) {
+      expect(giorgi.watchParty.activeHere && mariam.watchParty.activeHere).toBe(true);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    }
+
+    it("joins during the Watch Party, and leaving the Call leaves the Watch Party playing", async () => {
+      const { h, giorgi, mariam } = await watchingTogether();
+
+      giorgi.call.join();
+      mariam.call.join();
+      await h.advanceAsync(SECOND);
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+      expect(hears(giorgi)).toBe("mariam1 microphone");
+      expectWatchingInStep(giorgi, mariam);
+
+      giorgi.call.leave();
+      await h.advanceAsync(10 * SECOND);
+      expect(mariam.call.state.other).toBeNull();
+      expectWatchingInStep(giorgi, mariam);
+    });
+
+    it("stays connected while a Watch Party starts and ends", async () => {
+      const { h, giorgi, mariam } = await bothOnline(source);
+      giorgi.call.join();
+      mariam.call.join();
+      await h.advanceAsync(SECOND);
+
+      giorgi.watchParty.start(DUNE, null);
+      await h.advanceAsync(SECOND);
+      mariam.watchParty.join();
+      await h.advanceAsync(15 * SECOND);
+      expectWatchingInStep(giorgi, mariam);
+      giorgi.watchParty.cancel();
+      await h.advanceAsync(5 * SECOND);
+
+      expect(giorgi.watchParty.activeHere || mariam.watchParty.activeHere).toBe(false);
+      expect(giorgi.player).toBeNull();
+      expect(giorgi.media.peerConnections).toHaveLength(1);
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+      expect(hears(giorgi)).toBe("mariam1 microphone");
+    });
+
+    it("carries on the Watch Party when the microphone is blocked", async () => {
+      const { h, giorgi, mariam } = await watchingTogether();
+
+      giorgi.media.microphone = "NotAllowedError";
+      giorgi.call.join();
+      mariam.call.join();
+      await h.advanceAsync(5 * SECOND);
+
+      expect(giorgi.call.state.mic.problem).toBe("blocked");
+      expect(hears(giorgi)).toBe("mariam1 microphone");
+      expectWatchingInStep(giorgi, mariam);
     });
   });
 
