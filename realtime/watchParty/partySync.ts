@@ -195,6 +195,11 @@ export function createPartySync({
   let startTimer: TimerId | null = null;
   /** The loaded Title's length, once the player reported it. */
   let duration: number | null = null;
+  /**
+   * The player stopped at the end of what it plays. It stays there (nothing
+   * to play, no drift to report) until the shared state wants it earlier on.
+   */
+  let stoppedAtTheEnd = false;
   let nextEpisodeTimer: TimerId | null = null;
   let destroyed = false;
 
@@ -244,10 +249,21 @@ export function createPartySync({
     return behind ? { playing: true, position: playerPosition() } : wanted;
   }
 
+  /**
+   * Whether a player that stopped at the end stays there, when the shared
+   * state wants it at `position`: the shared state goes on past the end until
+   * the coordinator hears it ended.
+   */
+  function staysAtTheEnd(position: number) {
+    if (stoppedAtTheEnd && duration !== null && position < duration - END_TOLERANCE_S) stoppedAtTheEnd = false;
+    return stoppedAtTheEnd;
+  }
+
   /** Moves the player to where the shared state is now (also when the coordinator says it drifted). */
   function seekToParty(party: WatchPartyState) {
     if (!adapter) return;
     const position = anchorAt(party.anchor, client.serverNow()).position;
+    if (staysAtTheEnd(position)) return;
     adapter.seek(position);
     echoes.expect({ type: "seeked", position });
     playerIsAt(position);
@@ -261,7 +277,7 @@ export function createPartySync({
   function reportPosition() {
     reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
     const party = live();
-    if (!party || view.player !== "ready" || echoes.awaiting("seeked")) return;
+    if (!party || view.player !== "ready" || stoppedAtTheEnd || echoes.awaiting("seeked")) return;
     if (!player.paused && !player.stalled && clock.now() - player.at > STALL_MS) player.stalled = true;
     watchParty.reportPosition({
       partyId: party.id,
@@ -277,6 +293,7 @@ export function createPartySync({
     const party = live();
     if (!adapter || view.player !== "ready" || !party) return;
     const wanted = wantedNow(party);
+    if (staysAtTheEnd(wanted.position)) return;
     if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) {
       adapter.seek(wanted.position);
       echoes.expect({ type: "seeked", position: wanted.position });
@@ -397,6 +414,7 @@ export function createPartySync({
   function heardEnded() {
     playerIsAt(duration ?? playerPosition());
     player.paused = true;
+    stoppedAtTheEnd = true;
     const party = live();
     if (!party || view.player !== "ready" || !takesPlaybackChanges(party.phase)) return;
     const { id, title } = party;
@@ -458,6 +476,7 @@ export function createPartySync({
     loadedEpisode = party.episode;
     loadedSource = party.source;
     duration = null;
+    stoppedAtTheEnd = false;
     echoes.clear();
     reported = null;
     const startAt = anchorAt(party.anchor, client.serverNow()).position;

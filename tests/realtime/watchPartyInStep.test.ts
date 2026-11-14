@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
+import type { TitleRef } from "../../realtime/presence/protocol";
+import type { ShowEpisodes } from "../../realtime/watchParty/episodeGuide";
+import type { Episode } from "../../realtime/watchParty/protocol";
 import { createHarness, SECOND, syncableSourcesUnderTest, type Harness, type TestDevice } from "./harness";
 import type { FakePlayerOptions } from "./harness/fakeSourcePlayers";
 
 const MINUTE = 60 * SECOND;
 
 const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
+const SEVERANCE = { contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" };
+
+/** Severance's first season, as TMDB lists it. */
+const SEVERANCE_EPISODES: ShowEpisodes = {
+  seasons: [{ season_number: 1, episode_count: 9 }],
+  last_episode_to_air: { season_number: 1, episode_number: 9 },
+};
 
 /** How finely `track` looks. */
 const STEP_MS = 50;
@@ -48,13 +58,18 @@ function apart(a: TestDevice, b: TestDevice) {
 }
 
 describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s", (source) => {
-  /** Giorgi starts Dune, Mariam joins, and they watch a minute of it together. */
-  function watchingTogether({ giorgi: giorgiPlayer, mariam: mariamPlayer }: Record<string, FakePlayerOptions> = {}) {
-    const h = createHarness({ syncableSource: source });
+  /** Giorgi starts `title` (Dune unless said), Mariam joins, and they watch a minute of it together. */
+  function watchingTogether({
+    giorgi: giorgiPlayer,
+    mariam: mariamPlayer,
+    title = DUNE,
+    episode = null,
+  }: { giorgi?: FakePlayerOptions; mariam?: FakePlayerOptions; title?: TitleRef; episode?: Episode | null } = {}) {
+    const h = createHarness({ syncableSource: source, shows: { [SEVERANCE.tmdbId]: SEVERANCE_EPISODES } });
     const giorgi = h.device("giorgi", { player: giorgiPlayer });
     const mariam = h.device("mariam", { player: mariamPlayer });
     h.advance(SECOND);
-    giorgi.watchParty.start(DUNE, null);
+    giorgi.watchParty.start(title, episode);
     h.advance(SECOND);
     mariam.watchParty.join();
     h.advance(MINUTE);
@@ -171,6 +186,32 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       const resumedFor = (h.clock.now() - seen.giorgiPlaying.at(-1)!.at) / SECOND;
       expect(giorgi.player!.position).toBeCloseTo(waitingAt + resumedFor, 0);
       expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+  });
+
+  describe("the end of an episode", () => {
+    it("makes nobody wait, however long the episode after it takes to look up", async () => {
+      const { h, giorgi, mariam } = watchingTogether({ title: SEVERANCE, episode: { season: 1, episode: 1 } });
+
+      giorgi.player!.controls.seek(giorgi.player!.duration - 10);
+      // Both players reach the end; the lookup of the next episode has not answered yet.
+      h.advance(11 * SECOND);
+      for (const device of [giorgi, mariam]) {
+        expect(device.player!.paused).toBe(true);
+        expect(device.player!.position).toBeCloseTo(device.player!.duration, 1);
+      }
+      const atTheEnd = giorgi.watchParty.party;
+      h.advance(20 * SECOND);
+      // Stopped at the end is where they should be: nothing changes, and nobody is waited for.
+      expect(giorgi.watchParty.party).toEqual(atTheEnd);
+      expect(giorgi.partySync?.view.waitingFor).toBeNull();
+      expect(mariam.partySync?.view.waitingFor).toBeNull();
+
+      for (let waited = 0; waited < 5 * SECOND && !mariam.partySync?.view.nextEpisode; waited += 50) {
+        await h.advanceAsync(50);
+      }
+      expect(giorgi.partySync?.view.nextEpisode?.episode).toEqual({ season: 1, episode: 2 });
+      expect(mariam.partySync?.view.nextEpisode?.episode).toEqual({ season: 1, episode: 2 });
     });
   });
 });

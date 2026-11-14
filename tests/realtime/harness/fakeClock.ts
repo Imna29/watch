@@ -13,6 +13,9 @@ export interface FakeClock extends Clock {
   skewed(skewMs: number): Clock;
 }
 
+/** More timers than this due at one moment means code that schedules itself at once, forever. */
+const MAX_TIMERS_AT_ONE_MOMENT = 10_000;
+
 interface Timer {
   id: number;
   due: number;
@@ -42,10 +45,15 @@ export function createFakeClock(start = Date.UTC(2026, 10, 14, 20, 0, 0)): FakeC
 
     advance(ms) {
       const until = time + ms;
+      let sameMoment = 0;
       for (;;) {
         const next = timers[0];
         if (!next || next.due > until) break;
         timers.shift();
+        sameMoment = next.due === time ? sameMoment + 1 : 0;
+        if (sameMoment > MAX_TIMERS_AT_ONE_MOMENT) {
+          throw new Error(`Timers keep firing at ${new Date(time).toISOString()}: something loops without end.`);
+        }
         time = next.due;
         next.callback();
       }
