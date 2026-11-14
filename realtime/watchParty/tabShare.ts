@@ -16,6 +16,7 @@
  * `./tabShareDevice.ts`.
  */
 import { z } from "zod";
+import { partyIntentSchema } from "./intentSchema";
 import type { Viewer } from "../../models/Viewer";
 import type { MessageHandler, MessageHandlers } from "../coordinator";
 import type { DeviceMessageType } from "../protocol";
@@ -23,17 +24,14 @@ import { anchorAt } from "./partySync";
 import type { StopTabShareMessage, TabShare, TabShareMessage, WatchPartyState } from "./protocol";
 import { sourceIdSchema } from "./sourceFallback";
 
-export const tabShareSchema = z.object({
-  type: z.literal("watchParty:tabShare"),
-  partyId: z.string().max(100),
+export const tabShareSchema = partyIntentSchema("watchParty:tabShare").extend({
   source: sourceIdSchema,
   sound: z.boolean(),
 }) satisfies z.ZodType<TabShareMessage>;
 
-export const stopTabShareSchema = z.object({
-  type: z.literal("watchParty:stopTabShare"),
-  partyId: z.string().max(100),
-}) satisfies z.ZodType<StopTabShareMessage>;
+export const stopTabShareSchema = partyIntentSchema(
+  "watchParty:stopTabShare",
+) satisfies z.ZodType<StopTabShareMessage>;
 
 /** Not in Tab Share: both Viewers watch in a Syncable Source's player. */
 export function noTabShare(): Pick<WatchPartyState, "mode" | "tabShare"> {

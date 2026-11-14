@@ -6,15 +6,14 @@
  * (`afterEpisodeChange` in `./sharedControls.ts`).
  */
 import { z } from "zod";
+import { partyIntentSchema } from "./intentSchema";
 import type { Episode, TitleEndedMessage, WatchPartyState } from "./protocol";
 import { episodeSchema, positionSchema } from "./sharedControls";
 
 /** How long both Viewers see "Next episode in 10s" before both move to it. */
 export const NEXT_EPISODE_COUNTDOWN_MS = 10_000;
 
-export const titleEndedSchema = z.object({
-  type: z.literal("watchParty:ended"),
-  partyId: z.string().max(100),
+export const titleEndedSchema = partyIntentSchema("watchParty:ended").extend({
   episode: episodeSchema.nullable(),
   position: positionSchema,
   next: episodeSchema.nullable(),

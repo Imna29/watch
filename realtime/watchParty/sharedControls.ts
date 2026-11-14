@@ -5,6 +5,7 @@
  * the state.
  */
 import { z } from "zod";
+import { partyIntentSchema } from "./intentSchema";
 import type { Episode, PlaybackChange, PlaybackMessage, WatchPartyState } from "./protocol";
 import { noFailedSources } from "./sourceFallback";
 import { noTabShare } from "./tabShare";
@@ -20,9 +21,7 @@ export const episodeSchema = z.object({
   episode: z.number().int().min(0).max(100_000),
 });
 
-export const playbackSchema = z.object({
-  type: z.literal("watchParty:playback"),
-  partyId: z.string().max(100),
+export const playbackSchema = partyIntentSchema("watchParty:playback").extend({
   change: z.discriminatedUnion("kind", [
     z.object({ kind: z.enum(["play", "pause", "seek"]), position: positionSchema }),
     // The speeds a <video> plays at.

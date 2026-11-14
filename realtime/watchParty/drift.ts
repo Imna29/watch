@@ -30,6 +30,7 @@ import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
 import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
+import { partyIntentSchema } from "./intentSchema";
 import { noTabShare } from "./tabShare";
 
 /** How often party sync reports where its player is. */
@@ -82,9 +83,7 @@ const REPORT_FRESH_MS = 3 * POSITION_REPORT_MS;
 /** No Title runs longer than a day. */
 const MAX_POSITION_S = 24 * 3600;
 
-export const positionSchema = z.object({
-  type: z.literal("watchParty:position"),
-  partyId: z.string().max(100),
+export const positionSchema = partyIntentSchema("watchParty:position").extend({
   seq: z.number().int().min(0),
   position: z.number().finite().min(0).max(MAX_POSITION_S),
   serverTime: z.number().finite(),

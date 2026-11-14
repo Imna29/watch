@@ -27,6 +27,7 @@ import type {
 } from "./protocol";
 import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
 import { keepInStep, positionSchema } from "./drift";
+import { partyIdSchema, partyIntentSchema } from "./intentSchema";
 import { afterEpisodeEnded, titleEndedSchema } from "./ending";
 import { afterEpisodeChange, afterPlaybackChange, episodeSchema, playbackSchema, sameEpisode } from "./sharedControls";
 import {
@@ -81,19 +82,12 @@ const startSchema = z
     type: z.literal("watchParty:start"),
     title: titleRefSchema.extend({ tmdbId: z.number().int().positive().max(PG_INT_MAX) }),
     episode: episodeSchema.nullable(),
-    replacing: z.string().max(100).nullable(),
+    replacing: partyIdSchema.nullable(),
   })
   // A movie has no episode; a TV show is always watched one episode at a time.
   .refine(({ title, episode }) => (title.contentType === WatchPlaylistItemType.MOVIE) === (episode === null));
 
-/** An intent about one Watch Party, which is ignored once that Watch Party is gone. */
-function partyIntentSchema<T extends string>(type: T) {
-  return z.object({ type: z.literal(type), partyId: z.string().max(100) });
-}
-
-const playerStatusSchema = z.object({
-  type: z.literal("watchParty:player"),
-  partyId: z.string().max(100),
+const playerStatusSchema = partyIntentSchema("watchParty:player").extend({
   status: z.enum(["ready", "failed"]),
   episode: episodeSchema.nullable(),
   source: sourceIdSchema,

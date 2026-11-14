@@ -7,6 +7,7 @@
  * moves both players there at the current position.
  */
 import { z } from "zod";
+import { partyIntentSchema } from "./intentSchema";
 import { SOURCES, type SourceId } from "../../utils/sources";
 import { anchorAt } from "./partySync";
 import type { SourceFallback, SwitchSourceMessage, WatchPartyState } from "./protocol";
@@ -17,9 +18,7 @@ export const sourceIdSchema = z.custom<SourceId>(
   (value) => typeof value === "string" && SOURCES.some((source) => source.id === value),
 );
 
-export const switchSourceSchema = z.object({
-  type: z.literal("watchParty:source"),
-  partyId: z.string().max(100),
+export const switchSourceSchema = partyIntentSchema("watchParty:source").extend({
   source: sourceIdSchema,
 }) satisfies z.ZodType<SwitchSourceMessage>;
 
