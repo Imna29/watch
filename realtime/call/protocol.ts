@@ -22,12 +22,14 @@ export interface IceServersResponse {
  * What a Call device sends, one track per slot, in this order. Each peer
  * connection carries one transceiver per slot, so turning the camera on or
  * off swaps a track without renegotiating, and each side knows which remote
- * track is which by its position. Tab Share (#15) appends its video and
- * audio slots here.
+ * track is which by its position. Tab Share sends the shared tab's picture
+ * and sound in the last two (`./tabCapture.ts`).
  */
 export const CALL_SLOTS = [
   { slot: "mic", kind: "audio" },
   { slot: "camera", kind: "video" },
+  { slot: "tabVideo", kind: "video" },
+  { slot: "tabAudio", kind: "audio" },
 ] as const;
 
 export type CallSlot = (typeof CALL_SLOTS)[number]["slot"];

@@ -1,23 +1,26 @@
 /**
  * The Call, on a device: joining and leaving, this device's microphone (with
- * push-to-talk) and camera, and the peer connection to the other Viewer's
- * Call device.
+ * push-to-talk) and camera, a shared tab's picture and sound (Tab Share),
+ * and the peer connection to the other Viewer's Call device.
  * Framework-free: the browser's media and WebRTC come in as a
  * `CallPlatform`, so seam 1 tests run it on fakes. Vue reaches it through
  * `useCall()` (`composables/useCall.ts`).
  *
  * Independent of any Watch Party: nothing here starts, follows or leaves one.
+ * Tab Share's Watch Party side (`../watchParty/tabShareDevice.ts`) asks it
+ * to share a tab.
  */
 import { otherViewer, type Viewer } from "../../models/Viewer";
 import type { Clock } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import { emptySlots, openCallPeer, type CallPeer } from "./peer";
-import type { CallPlatform, MediaTrack } from "./platform";
+import type { CallPlatform, MediaTrack, TabCapture } from "./platform";
 import { CALL_SLOTS, type CallLink, type CallMedia, type CallSlot } from "./protocol";
 
 /**
- * Why a microphone or camera could not start:
- * - `blocked`: the Viewer or the browser denied access
+ * Why a microphone, camera or shared tab could not start:
+ * - `blocked`: the Viewer or the browser denied access (for a tab: also
+ *   when the Viewer cancelled the browser's picker)
  * - `not-found`: there is no such device
  * - `in-use`: another app holds it, or the system blocks it
  * - `unsupported`: this browser or page cannot use it (e.g. not HTTPS)
@@ -37,6 +40,11 @@ export interface CallState {
   /** This device's microphone: on (sending), and why it could not start. */
   mic: { on: boolean; problem: MediaProblem | null };
   camera: { on: boolean; problem: MediaProblem | null };
+  /**
+   * Tab Share: whether this device shares a browser tab's picture in the
+   * Call, and its sound too (`sound`), and why it could not (`problem`).
+   */
+  tab: { sharing: boolean; sound: boolean; problem: MediaProblem | null };
   /**
    * Push-to-talk on this device: while `on`, the microphone is live only
    * while the Viewer is `holding` the talk button.
@@ -86,6 +94,16 @@ export interface DeviceCall {
    * after the release, it stays quiet.
    */
   holdToTalk(holding: boolean): Promise<void>;
+  /**
+   * Tab Share: asks the Viewer for a browser tab (this one first) and sends
+   * its picture and sound in the Call. Call it from the Viewer's click: the
+   * browser asks first, while the click still allows it, and only then does
+   * this device join the Call, if it is not in it. Resolves whether it
+   * shares; `state.tab.problem` says why not.
+   */
+  shareTab(): Promise<boolean>;
+  /** Stops sharing the tab, and releases it. Leaving the Call does too. */
+  stopSharingTab(): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -238,6 +256,56 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
     if (peer?.link === message.link) peer.receive(message.signal);
   });
 
+  async function join() {
+    const identity = client.identity;
+    if (status !== "out" || !identity) return;
+    status = "joining";
+    continuedElsewhere = false;
+    micChoice = true;
+    joinId = `${identity.deviceId}/${++joinCount}`;
+    takeOver = true;
+    changed();
+    await start("mic", () => platform.getMicrophone());
+    if (status !== "joining") return;
+    status = "in";
+    sendJoin();
+    changed();
+  }
+
+  async function shareTab() {
+    if (local.tabVideo) return true;
+    // Stopping, leaving the Call or another try while the browser asks makes this one too late.
+    const request = ++requests.tabVideo;
+    let capture: TabCapture;
+    try {
+      capture = await platform.captureTab();
+    } catch (error) {
+      if (request === requests.tabVideo) problems.tabVideo = mediaProblemOf(error);
+      changed();
+      return false;
+    }
+    if (request === requests.tabVideo && status === "out") await join();
+    if (request !== requests.tabVideo || status === "out") {
+      capture.video.stop();
+      capture.audio?.stop();
+      return false;
+    }
+    setLocal("tabVideo", capture.video);
+    setLocal("tabAudio", capture.audio);
+    problems.tabVideo = null;
+    capture.onEnded(() => {
+      if (local.tabVideo === capture.video) stopSharingTab();
+    });
+    changed();
+    return true;
+  }
+
+  function stopSharingTab() {
+    setLocal("tabVideo", null);
+    setLocal("tabAudio", null);
+    changed();
+  }
+
   return {
     get state(): CallState {
       const me = client.identity?.viewer;
@@ -248,6 +316,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
         other: viewers && me ? viewers[otherViewer(me)] : null,
         mic: { on: !!local.mic?.enabled, problem: problems.mic },
         camera: { on: !!local.camera, problem: problems.camera },
+        tab: { sharing: !!local.tabVideo, sound: !!local.tabAudio, problem: problems.tabVideo },
         pushToTalk: { on: pushToTalk, holding },
         connection: peer ? peer.status : "waiting",
         local: { ...local },
@@ -255,21 +324,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
       };
     },
 
-    async join() {
-      const identity = client.identity;
-      if (status !== "out" || !identity) return;
-      status = "joining";
-      continuedElsewhere = false;
-      micChoice = true;
-      joinId = `${identity.deviceId}/${++joinCount}`;
-      takeOver = true;
-      changed();
-      await start("mic", () => platform.getMicrophone());
-      if (status !== "joining") return;
-      status = "in";
-      sendJoin();
-      changed();
-    },
+    join,
 
     leave() {
       if (status === "out") return;
@@ -309,6 +364,9 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
       holding = on;
       await updateMic();
     },
+
+    shareTab,
+    stopSharingTab,
 
     subscribe(listener) {
       listeners.add(listener);
