@@ -55,7 +55,7 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
   other page is for a signed-in Viewer.
 
 ## Realtime
-Presence and the Call (later the Watch Party) run over one WebSocket per Device
+Presence, the Watch Party and the Call run over one WebSocket per Device
 (ADR 0003). `realtime/` is framework-free, shared by server, browser and tests,
 and imported explicitly. A feature lives in `realtime/<feature>/`:
 - `protocol.ts`: its messages, added to the unions in `realtime/protocol.ts`.
