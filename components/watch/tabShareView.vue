@@ -23,15 +23,15 @@ const otherName = computed(() => otherViewerName(watchParty.state.value.viewer))
 const live = computed(() => props.party.phase.name !== "ended");
 
 // The other Viewer's device: the shared tab, as the Call receives it.
-const screen = useTemplateRef<HTMLVideoElement>("screen");
+const sharedTab = useTemplateRef<HTMLVideoElement>("sharedTab");
 const inCall = computed(() => call.value.status === "in");
 /** The browser refused to start the shared tab's sound by itself: the Viewer starts it. */
 const needsClick = ref(false);
 
-useMediaTracks(screen, () => [call.value.remote.tabVideo, call.value.remote.tabAudio], play);
+useMediaTracks(sharedTab, () => [call.value.remote.tabVideo, call.value.remote.tabAudio], play);
 
 function play() {
-    screen.value?.play().then(
+    sharedTab.value?.play().then(
         () => (needsClick.value = false),
         () => (needsClick.value = true),
     );
@@ -47,8 +47,8 @@ const status = computed(() => {
 
 <template>
     <template v-if="live && share && !sharingHere">
-        <!-- Native controls for this Viewer's own volume; fullscreen is the shell's, so the Call's tiles stay. -->
-        <video ref="screen" autoplay playsinline controls disablepictureinpicture
+        <!-- Native controls for this Viewer's own volume; fullscreen is the player frame's, so the Call's tiles stay. -->
+        <video ref="sharedTab" autoplay playsinline controls disablepictureinpicture
             controlslist="nofullscreen nodownload noplaybackrate noremoteplayback"
             class="pointer-events-auto absolute inset-0 h-full w-full bg-black object-contain"
             :aria-label="`${sharerName}'s shared tab`"></video>

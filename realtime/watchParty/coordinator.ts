@@ -127,10 +127,10 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     /** The devices whose player has the current Watch Party's Title loaded. */
     let readyDevices = new Set<DeviceId>();
     /**
-     * The Device (by key) each Viewer takes part from: when it comes back on a
-     * new connection, it takes part again from there (`rejoin`).
+     * The Device (by key) of each Viewer's active device: when it comes back
+     * on a new connection, it takes part again from there (`rejoin`).
      */
-    let seatKeys: Partial<Record<Viewer, DeviceKey>> = {};
+    let activeDeviceKeys: Partial<Record<Viewer, DeviceKey>> = {};
     let seq = 0;
     let partyCount = 0;
 
@@ -162,8 +162,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     }
 
     /** `device` becomes its Viewer's active device: returns its id for `activeDevices`. */
-    function takeSeat(device: Device) {
-      seatKeys[device.viewer] = device.key;
+    function makeActive(device: Device) {
+      activeDeviceKeys[device.viewer] = device.key;
       return device.id;
     }
 
@@ -174,11 +174,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
      * waits for its Viewer, whose active device is gone.
      */
     function rejoins(device: Device, current: WatchPartyState) {
-      const seat = current.activeDevices[device.viewer];
-      if (seat === null || seat === device.id) return false;
+      const active = current.activeDevices[device.viewer];
+      if (active === null || active === device.id) return false;
       const { phase } = current;
       const waitedFor = phase.name === "waiting" && phase.viewer === device.viewer && phase.reason === "disconnected";
-      return seatKeys[device.viewer] === device.key || waitedFor;
+      return activeDeviceKeys[device.viewer] === device.key || waitedFor;
     }
 
     /** `device` takes part again in its Viewer's place, at the shared position. */
@@ -188,7 +188,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       publish({
         ...current,
         ...inStep.rejoined(current, device.viewer),
-        activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) },
+        activeDevices: { ...current.activeDevices, [device.viewer]: makeActive(device) },
       });
     }
 
@@ -203,7 +203,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       if (previous === null || previous === device.id) return;
       // The new device's player has yet to load: it reports when it has.
       readyDevices.delete(previous);
-      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) } });
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: makeActive(device) } });
     }
 
     /**
@@ -286,8 +286,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               Viewer,
               DeviceId | null
             >;
-            seatKeys = {};
-            activeDevices[from.viewer] = takeSeat(from);
+            activeDeviceKeys = {};
+            activeDevices[from.viewer] = makeActive(from);
             readyDevices = new Set();
             publish({
               id: `${now.toString(36)}-${++partyCount}`,
@@ -314,7 +314,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               ...party,
               phase: { name: "countdown", endsAt: null },
               lastChangeBy: from.viewer,
-              activeDevices: { ...party.activeDevices, [from.viewer]: takeSeat(from) },
+              activeDevices: { ...party.activeDevices, [from.viewer]: makeActive(from) },
             });
             recordForBoth(party);
             startCountdownWhenReady();

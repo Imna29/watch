@@ -1,6 +1,6 @@
 /**
  * The coordinator: the server's single authority over realtime state
- * (presence now; the Watch Party and Call routing later). Framework-free and
+ * (presence, the Watch Party, and relaying the Call's setup). Framework-free and
  * transport-agnostic: the WebSocket handler (`server/routes/realtime.ts`), or
  * a test's fake network, feeds it devices connecting and disconnecting,
  * messages from devices and clock ticks, and carries out what it returns. It
