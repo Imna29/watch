@@ -1,5 +1,6 @@
 import type { H3Event } from "h3";
 import type { Viewer } from "~/models/Viewer";
+import { SIGNED_OUT_HEADER } from "~/utils/signIn";
 import { createViewerSignIn } from "../viewer/signIn";
 
 declare module "h3" {
@@ -28,10 +29,15 @@ export function getRequestViewer(event: H3Event): Viewer | null {
   return event.context.viewer ?? useViewerSignIn().readViewer(getRequestHeader(event, "cookie"));
 }
 
-/** The Viewer who sent this request; responds 401 when it has no valid sign-in cookie. */
+/**
+ * The Viewer who sent this request; responds 401 when it has no valid
+ * sign-in cookie, marked (`SIGNED_OUT_HEADER`) so the browser tells it from
+ * any other 401 and goes to sign in.
+ */
 export function requireViewer(event: H3Event): Viewer {
   const viewer = getRequestViewer(event);
   if (!viewer) {
+    setResponseHeader(event, SIGNED_OUT_HEADER, "1");
     throw createError({ statusCode: 401, statusMessage: "Sign in first" });
   }
   return viewer;

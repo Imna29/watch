@@ -1,8 +1,4 @@
-import { signInPathFrom } from "~/utils/signIn";
-
-// Answered 401 on purpose: a wrong password, or "nobody signed in" while the
-// route guard asks who is.
-const SIGN_IN_REQUESTS = ["/sign-in", "/sign-out", "/viewer"];
+import { lostSignIn, signInPathFrom } from "~/utils/signIn";
 
 export default defineNuxtPlugin({
     parallel: true,
@@ -21,10 +17,8 @@ export default defineNuxtPlugin({
                 // The sign-in cookie stopped working (expired, or this Viewer's
                 // password changed): start over from the sign-in page, with a
                 // full page load so nothing from before stays in memory.
-                if (response.status !== 401) return;
                 const url = typeof request === "string" ? request : request.url;
-                const path = new URL(url, window.location.origin).pathname;
-                if (SIGN_IN_REQUESTS.some((signInRequest) => path.endsWith(signInRequest))) return;
+                if (!lostSignIn(new URL(url, window.location.origin).pathname, response)) return;
                 window.location.assign(
                     signInPathFrom(window.location.pathname + window.location.search),
                 );
