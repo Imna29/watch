@@ -1,5 +1,7 @@
+import { useQueryClient } from "@tanstack/vue-query";
 import { systemClock } from "~/realtime/clock";
-import type { EndedNotice, StartChoice } from "~/realtime/watchParty/device";
+import type { EndedNotice, LeftNotice, StartChoice } from "~/realtime/watchParty/device";
+import type { EpisodeGuide } from "~/realtime/watchParty/episodeGuide";
 import { createPartySync, type PartySyncView } from "~/realtime/watchParty/partySync";
 import type { WatchPartyState } from "~/realtime/watchParty/protocol";
 import type { PlayerFrame } from "~/realtime/watchParty/sources/adapter";
@@ -12,6 +14,9 @@ export interface WatchPartySnapshot {
   viewer: Viewer | null;
   party: WatchPartyState | null;
   activeHere: boolean;
+  /** The Watch Party whose player this device shows (the layout's `<WatchPartyPlayer>`). */
+  playerParty: WatchPartyState | null;
+  left: LeftNotice | null;
   elsewhere: WatchPartyState | null;
   continuedElsewhere: boolean;
   invite: WatchPartyState | null;
@@ -31,6 +36,8 @@ export function useWatchParty() {
     viewer: client.identity?.viewer ?? null,
     party: watchParty.party,
     activeHere: watchParty.activeHere,
+    playerParty: watchParty.playerParty,
+    left: watchParty.left,
     elsewhere: watchParty.elsewhere,
     continuedElsewhere: watchParty.continuedElsewhere,
     invite: watchParty.invite,
@@ -57,6 +64,10 @@ export function useWatchParty() {
     cancel: watchParty.cancel,
     dismissEnded: watchParty.dismissEnded,
     changeEpisode: watchParty.changeEpisode,
+    cancelNextEpisode: watchParty.cancelNextEpisode,
+    leave: watchParty.leave,
+    keepWatchingAlone: watchParty.keepWatchingAlone,
+    stop: watchParty.stop,
   };
 }
 
@@ -88,7 +99,13 @@ export function usePartySync(iframe: Readonly<Ref<HTMLIFrameElement | null | und
     },
   };
 
-  const sync = createPartySync({ watchParty, client, clock: systemClock, frame });
+  // The episode after one that ended, from the TV show's details (the episode picker has them already).
+  const queryClient = useQueryClient();
+  const episodes: EpisodeGuide = {
+    episodesOf: (tmdbId) => queryClient.query(tvOptions.byId(tmdbId)),
+  };
+
+  const sync = createPartySync({ watchParty, client, clock: systemClock, frame, episodes });
   const view = shallowRef<PartySyncView>(sync.view);
   sync.subscribe(() => {
     view.value = sync.view;
