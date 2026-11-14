@@ -1,11 +1,11 @@
-import { lostSignIn, signInPathFrom } from "~/utils/signIn";
+import { API_BASE, lostSignIn, signInPathFrom } from "~/utils/signIn";
 
 export default defineNuxtPlugin({
     parallel: true,
     setup() {
         const isLoading = useIsLoading();
         const apiClient = $fetch.create({
-            baseURL: "/api",
+            baseURL: API_BASE,
             credentials: "include",
             onRequest: context => {
                 isLoading.value = true;

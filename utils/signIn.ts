@@ -20,9 +20,15 @@ export function pathAfterSignIn(redirect: unknown): string {
  */
 export const SIGNED_OUT_HEADER = "x-watch-signed-out";
 
-// Answered 401 on purpose: a wrong password, or "nobody signed in" while the
-// route guard asks who is.
-const SIGN_IN_REQUESTS = ["/sign-in", "/sign-out", "/viewer"];
+/** The API's base path. */
+export const API_BASE = "/api";
+
+/**
+ * The API's sign-in requests, under `API_BASE`: signing in (the only request
+ * open to signed-out visitors), signing out, and who is signed in. Signing in
+ * and asking who is answer 401 on purpose: a wrong password, "nobody".
+ */
+export const SIGN_IN_REQUESTS = { signIn: "/sign-in", signOut: "/sign-out", viewer: "/viewer" } as const;
 
 /**
  * Whether the API's `response` to a request for `path` says the sign-in
@@ -32,7 +38,7 @@ const SIGN_IN_REQUESTS = ["/sign-in", "/sign-out", "/viewer"];
  */
 export function lostSignIn(path: string, response: { status: number; headers: Headers }): boolean {
   if (response.status !== 401 || response.headers.get(SIGNED_OUT_HEADER) === null) return false;
-  return !SIGN_IN_REQUESTS.some((signInRequest) => path.endsWith(signInRequest));
+  return !Object.values(SIGN_IN_REQUESTS).some((signInRequest) => path.endsWith(signInRequest));
 }
 
 /** The sign-in page, remembering `fromPath` to come back to afterwards. */

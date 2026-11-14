@@ -3,10 +3,12 @@
 // shell; the client route guard sends signed-out visitors to /sign-in.
 // WebSocket upgrades do not pass through Nitro middleware, so a WebSocket
 // handler checks the upgrade request's cookie itself (see `useViewerSignIn`).
+import { API_BASE, SIGN_IN_REQUESTS } from "~/utils/signIn";
+
 export default defineEventHandler((event) => {
   const path = normalizedPath(event.path);
-  const isApi = path === "/api" || path.startsWith("/api/");
-  if (!isApi || path === "/api/sign-in") return;
+  const isApi = path === API_BASE || path.startsWith(`${API_BASE}/`);
+  if (!isApi || path === `${API_BASE}${SIGN_IN_REQUESTS.signIn}`) return;
 
   event.context.viewer = requireViewer(event);
 });

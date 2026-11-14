@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { VIEWER_NAMES } from "~/models/Viewer";
 import { pathAfterSignIn } from "~/utils/signIn";
+
+/** "Giorgi or Mariam". */
+const viewerNames = Object.values(VIEWER_NAMES).join(" or ");
 
 const route = useRoute();
 const password = ref("");
@@ -24,7 +28,7 @@ function messageFor(error: unknown) {
     };
     const retryAfter = Number(response?.headers.get("retry-after") ?? 0);
     const wait = retryAfter > 0 ? ` Try again in ${formatWait(retryAfter)}.` : "";
-    if (statusCode === 401) return `That password doesn't belong to Giorgi or Mariam.${wait}`;
+    if (statusCode === 401) return `That password doesn't belong to ${viewerNames}.${wait}`;
     if (statusCode === 429) return `Too many wrong passwords.${wait}`;
     return "Could not sign in. Please try again.";
 }
