@@ -9,7 +9,13 @@
  *   dropped. When no server has the Title, nothing comes at all.
  */
 import { getSource } from "../../../utils/sources";
-import { createSourceLink, type AdapterFactory, type PlayerEvent } from "./adapter";
+import {
+  createSourceLink,
+  type AdapterFactory,
+  type AdapterOptions,
+  type PlayerEvent,
+  type SyncableSourceAdapter,
+} from "./adapter";
 
 /** A status question unanswered for this long is asked again. */
 const STATUS_RETRY_MS = 2000;
@@ -32,7 +38,10 @@ function seconds(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export const createCineSrcAdapter: AdapterFactory = (options) => {
+/** CineSrc takes `setPlaybackRate`. */
+const CAN_SET_RATE = true;
+
+function createAdapter(options: AdapterOptions): SyncableSourceAdapter {
   const source = getSource("cinesrc");
   /** The status question in flight: the answers so far. */
   let asking: { sentAt: number; position: number | null; paused: boolean | null } | null = null;
@@ -103,7 +112,7 @@ export const createCineSrcAdapter: AdapterFactory = (options) => {
 
   return {
     source,
-    canSetRate: true,
+    canSetRate: CAN_SET_RATE,
 
     load(playable, startAt) {
       asking = null;
@@ -139,4 +148,6 @@ export const createCineSrcAdapter: AdapterFactory = (options) => {
     on: link.on,
     destroy: link.destroy,
   };
-};
+}
+
+export const createCineSrcAdapter: AdapterFactory = Object.assign(createAdapter, { canSetRate: CAN_SET_RATE });

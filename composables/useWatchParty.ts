@@ -68,6 +68,7 @@ export function useWatchParty() {
     leave: watchParty.leave,
     keepWatchingAlone: watchParty.keepWatchingAlone,
     stop: watchParty.stop,
+    switchSource: watchParty.switchSource,
   };
 }
 

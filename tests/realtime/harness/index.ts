@@ -44,11 +44,7 @@ import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import type { EpisodeGuide, ShowEpisodes } from "../../../realtime/watchParty/episodeGuide";
 import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
-import {
-  SYNCABLE_SOURCE_ADAPTERS,
-  WATCH_PARTY_SOURCES,
-  type AdaptedSourceId,
-} from "../../../realtime/watchParty/sources";
+import { canSetRate, WATCH_PARTY_SOURCES, type AdaptedSourceId } from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
 import { createFakeHistory } from "./fakeHistory";
 import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
@@ -118,20 +114,19 @@ export function syncableSourcesUnderTest(): AdaptedSourceId[] {
  * `it.runIf(sourceCanSetRate(source))(...)`.
  */
 export function sourceCanSetRate(source: AdaptedSourceId): boolean {
-  const clock = createFakeClock();
-  const adapter = SYNCABLE_SOURCE_ADAPTERS[source]({ frame: createFakeFrame(clock), clock });
-  adapter.destroy();
-  return adapter.canSetRate;
+  return canSetRate(source);
 }
 
 export interface HarnessOptions {
   /** The Syncable Source Watch Parties use. */
   syncableSource?: AdaptedSourceId;
+  /** The Syncable Sources a Watch Party may go on to after it, best first. Default: none. */
+  fallbackSources?: readonly AdaptedSourceId[];
   /** TMDB's episode lists, by TV show id: what devices find when an episode ends. */
   shows?: Record<number, ShowEpisodes>;
 }
 
-export function createHarness({ syncableSource = "cinesrc", shows = {} }: HarnessOptions = {}) {
+export function createHarness({ syncableSource = "cinesrc", fallbackSources = [], shows = {} }: HarnessOptions = {}) {
   const clock = createFakeClock();
   const episodes: EpisodeGuide = {
     async episodesOf(tmdbId) {
@@ -142,7 +137,7 @@ export function createHarness({ syncableSource = "cinesrc", shows = {} }: Harnes
   };
   const history = createFakeHistory();
   const server = createFakeServer(clock, {
-    watchParty: { sources: [syncableSource], history },
+    watchParty: { sources: [syncableSource, ...fallbackSources], history },
   });
   const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};

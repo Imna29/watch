@@ -64,6 +64,13 @@ export type WatchPartyPhaseName = WatchPartyPhase["name"];
 /** How the Watch Party is held: in a Syncable Source's player, or by Tab Share over the Call. */
 export type WatchPartyMode = "syncable-source" | "tab-share";
 
+/**
+ * What both Viewers are offered once the Watch Party's Source could not play
+ * the Title: the next Syncable Source, or, when no Syncable Source is left,
+ * Tab Share.
+ */
+export type SourceFallback = { kind: "source"; source: SourceId } | { kind: "tab-share" };
+
 /** The shared state of the one Watch Party, as every device hears it. */
 export interface WatchPartyState {
   id: string;
@@ -76,6 +83,13 @@ export interface WatchPartyState {
   episode: Episode | null;
   /** The Syncable Source both players use (in Tab Share: the one the sharer plays). */
   source: SourceId;
+  /**
+   * The Syncable Sources that could not play the Title (this episode of it)
+   * on a Viewer's device, in the order they failed.
+   */
+  failedSources: SourceId[];
+  /** What both Viewers are offered now that `source` failed; null while it works. */
+  fallback: SourceFallback | null;
   mode: WatchPartyMode;
   phase: WatchPartyPhase;
   anchor: PlaybackAnchor;
@@ -124,13 +138,19 @@ export interface CancelWatchPartyMessage {
   partyId: string;
 }
 
-/** This device's player loaded the Watch Party's Title and can be controlled. */
+/**
+ * This device's player loaded the Watch Party's Title and can be controlled
+ * ("ready"), or its Source could not play it ("failed": the Source does not
+ * have it, or did not load in time).
+ */
 export interface PlayerStatusMessage {
   type: "watchParty:player";
   partyId: string;
-  status: "ready";
+  status: "ready" | "failed";
   /** The episode the player loaded (null: a movie): a report about an earlier episode does not count. */
   episode: Episode | null;
+  /** The Source the player loaded: a report about an earlier Source does not count. */
+  source: SourceId;
 }
 
 /**
@@ -146,10 +166,12 @@ export type PlaybackChange =
  * A change `by` made, in the shared state numbered `seq`. "next-cancelled":
  * they cancelled "Next episode in 10s", so both stay at the end of the episode.
  */
-export type WatchPartyChange = (PlaybackChange | { kind: "episode"; episode: Episode } | { kind: "next-cancelled" }) & {
-  by: Viewer;
-  seq: number;
-};
+export type WatchPartyChange = (
+  | PlaybackChange
+  | { kind: "episode"; episode: Episode }
+  | { kind: "source"; source: SourceId }
+  | { kind: "next-cancelled" }
+) & { by: Viewer; seq: number };
 
 /**
  * Whether Viewers control playback in this phase: both are in and the Title
@@ -171,6 +193,17 @@ export interface ChangeEpisodeMessage {
   type: "watchParty:episode";
   partyId: string;
   episode: Episode;
+}
+
+/**
+ * The Viewer switches the Watch Party to another Syncable Source (or takes
+ * the one its `fallback` offers): both players move there, at the current
+ * position.
+ */
+export interface SwitchSourceMessage {
+  type: "watchParty:source";
+  partyId: string;
+  source: SourceId;
 }
 
 /**
@@ -225,6 +258,7 @@ export type WatchPartyDeviceMessage =
   | PlayerStatusMessage
   | PlaybackMessage
   | ChangeEpisodeMessage
+  | SwitchSourceMessage
   | TitleEndedMessage
   | CancelNextEpisodeMessage
   | LeaveWatchPartyMessage;

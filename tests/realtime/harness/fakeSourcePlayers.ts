@@ -13,11 +13,24 @@ import type { PlayerFrame } from "../../../realtime/watchParty/sources/adapter";
 import type { AdaptedSourceId } from "../../../realtime/watchParty/sources";
 import { getSource, type Playable, type SourceId } from "../../../utils/sources";
 
+/**
+ * Where a player option applies: `true` for every Source, a list of
+ * Sources, or a test of a Source and what it is asked to play.
+ */
+export type ForSources = boolean | readonly SourceId[] | ((source: SourceId, playable: Playable) => boolean);
+
 export interface FakePlayerOptions {
   /** How long the player takes to find a stream and say it is ready. */
   loadMs?: number;
-  /** No server of the Source has the Title: the player never gets ready. */
-  unavailable?: boolean;
+  /**
+   * No server of the Source has the Title: after `loadMs` the player gives
+   * up, and says so if its Source does (VidFast does; CineSrc says nothing).
+   */
+  unavailable?: ForSources;
+  /** The Source is down: its player never loads and never says a thing. */
+  hangs?: ForSources;
+  /** The browser does not let the player start on its own: it waits, paused, for a command. */
+  noAutoplay?: boolean;
   /**
    * How long a seek takes to buffer: the video stands still at the new
    * position meanwhile, and "seeked" comes only after it. Default: at once.
@@ -63,8 +76,9 @@ export interface FakeSourcePlayer {
   /** The Viewer in front of this player, using the Source's own controls. */
   readonly controls: FakePlayerControls;
   /**
-   * Posts this Source's "ready" message from `origin` instead of the Source's
-   * own: what a page the iframe was sent to (an ad, say) could post.
+   * Posts what tells the site this Source's player is ready (CineSrc's
+   * "ready" message, VidFast's status), from `origin` instead of the
+   * Source's own: what a page the iframe was sent to (an ad, say) could post.
    */
   postReadyFrom(origin: string): void;
 }
@@ -79,6 +93,8 @@ export interface FakeFrame extends PlayerFrame {
 
 type VideoEvent =
   | "ready"
+  /** No server of the Source has the Title. */
+  | "unavailable"
   | "play"
   | "pause"
   | "seeking"
@@ -90,6 +106,8 @@ type VideoEvent =
 
 /** The simulated `<video>` inside a fake player. */
 interface FakeVideo {
+  /** What the player plays. */
+  readonly playable: Playable;
   readonly paused: boolean;
   readonly position: number;
   readonly rate: number;
@@ -104,12 +122,16 @@ interface FakeVideo {
 
 /** How one Syncable Source's player talks. */
 interface Dialect {
+  /** How often a playing video posts its position. */
+  timeupdateMs: number;
   /** What the embed URL asks for. */
   parseUrl(url: URL): { playable: Playable; startAt: number; autoplay: boolean };
   /** Handles a message from the site once the player is ready; `reply` posts an answer. */
   receive(data: unknown, video: FakeVideo, reply: (data: unknown) => void): void;
   /** The message the player posts for `event`; null when this Source posts none. */
   message(event: VideoEvent, video: FakeVideo): unknown;
+  /** A message the site takes to mean the player is ready. */
+  readySignal(video: FakeVideo): unknown;
   /**
    * The message the player posts once it moved to another episode by itself
    * (its own episode list or next-episode button). Absent when the Watch
@@ -120,6 +142,9 @@ interface Dialect {
 
 /** CineSrc, after https://cinesrc.st/docs (November 2026). */
 const cinesrc: Dialect = {
+  // Native `timeupdate`, unthrottled: about 4 Hz in Chrome.
+  timeupdateMs: 250,
+
   parseUrl(url) {
     const [, , kind, id] = url.pathname.split("/"); // /embed/{movie|tv}/{id}
     const tmdbId = Number(id);
@@ -174,9 +199,16 @@ const cinesrc: Dialect = {
         return { type, playbackRate: video.rate };
       case "volumechange":
         return { type, volume: video.volume, muted: false };
+      case "unavailable":
+        // "The video is unavailable on every server we tried.", shown in the player; nothing is posted.
+        return null;
       default:
         return { type };
     }
+  },
+
+  readySignal(video) {
+    return cinesrc.message("ready", video);
   },
 
   // `autonext=false` turns off the automatic next episode only: the episode list and next button stay.
@@ -185,11 +217,95 @@ const cinesrc: Dialect = {
   },
 };
 
-/** Every Syncable Source with an adapter has a fake player here. */
-const DIALECTS: Record<AdaptedSourceId, Dialect> = { cinesrc };
+/**
+ * VidFast, after https://vidfast.vc/ (November 2026). Its player posts no
+ * "ready" and no "error", has no speed command, and answers `getStatus`
+ * with a "playerstatus" event. The undocumented `{ event: "status", data }`
+ * messages say whether a server has the Title (200) or none does (404).
+ */
+const vidfast: Dialect = {
+  // VidFast throttles its "timeupdate" to about one a second.
+  timeupdateMs: 1000,
 
-/** How often a playing video fires `timeupdate` (Chrome: about 4 Hz). */
-const TIMEUPDATE_MS = 250;
+  parseUrl(url) {
+    const [, kind, id, season, episode] = url.pathname.split("/"); // /movie/{id} or /tv/{id}/{season}/{episode}
+    const tmdbId = Number(id);
+    const playable: Playable =
+      kind === "movie"
+        ? { kind: "movie", tmdbId }
+        : { kind: "episode", tmdbId, season: Number(season), episode: Number(episode) };
+    return {
+      playable,
+      // Without startAt VidFast resumes where it saved progress itself; this fake player has none saved.
+      startAt: Number.parseFloat(url.searchParams.get("startAt") ?? "0") || 0,
+      autoplay: url.searchParams.get("autoPlay") === "true",
+    };
+  },
+
+  receive(data, video, reply) {
+    const message = data as { command?: unknown; time?: unknown; level?: unknown };
+    switch (message?.command) {
+      case "play":
+        return video.play();
+      case "pause":
+        return video.pause();
+      case "seek":
+        // The docs: "Seek commands accept time in seconds (integer values)".
+        if (Number.isInteger(message.time)) video.seek(message.time as number);
+        return;
+      case "volume":
+        return video.setVolume(Number(message.level));
+      case "getStatus":
+        return reply(vidfastPlayerEvent("playerstatus", video));
+    }
+  },
+
+  message(event, video) {
+    switch (event) {
+      case "ready":
+        return { event: "status", data: 200 };
+      case "unavailable":
+        return { event: "status", data: 404 };
+      case "play":
+      case "pause":
+      case "seeked":
+      case "timeupdate":
+      case "ended":
+        return vidfastPlayerEvent(event, video);
+      default:
+        // No "seeking", "ratechange" or "volumechange" events.
+        return null;
+    }
+  },
+
+  readySignal(video) {
+    return vidfastPlayerEvent("playerstatus", video);
+  },
+};
+
+function vidfastPlayerEvent(event: string, video: FakeVideo) {
+  const { playable } = video;
+  return {
+    type: "PLAYER_EVENT",
+    data: {
+      event,
+      currentTime: video.position,
+      duration: video.duration,
+      tmdbId: playable.tmdbId,
+      mtmdbId: playable.tmdbId,
+      mediaType: playable.kind === "movie" ? "movie" : "tv",
+      season: playable.kind === "episode" ? playable.season : null,
+      episode: playable.kind === "episode" ? playable.episode : null,
+      playing: !video.paused,
+      muted: false,
+      volume: video.volume,
+    },
+  };
+}
+
+/** Every Syncable Source with an adapter has a fake player here. */
+const DIALECTS: Record<AdaptedSourceId, Dialect> = { cinesrc, vidfast };
+
 const MOVIE_SECONDS = 2.5 * 3600;
 const EPISODE_SECONDS = 50 * 60;
 const DEFAULT_LOAD_MS = 1500;
@@ -248,7 +364,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       ticker = clock.setTimeout(() => {
         post("timeupdate");
         tick();
-      }, TIMEUPDATE_MS);
+      }, dialect.timeupdateMs);
     }
 
     function stopTicking() {
@@ -276,6 +392,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
     }
 
     const video: FakeVideo = {
+      playable,
       get paused() {
         return paused;
       },
@@ -389,16 +506,21 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       duration,
       controls,
       postReadyFrom(origin) {
-        postToSite(origin, dialect.message("ready", video));
+        postToSite(origin, dialect.readySignal(video));
       },
     };
 
-    if (!options.unavailable) {
+    if (!appliesTo(options.hangs, sourceId, playable)) {
       loading = clock.setTimeout(() => {
+        loading = null;
+        if (appliesTo(options.unavailable, sourceId, playable)) {
+          post("unavailable");
+          return;
+        }
         ready = true;
         settle();
         post("ready");
-        if (autoplay) video.play();
+        if (autoplay && !options.noAutoplay) video.play();
       }, options.loadMs ?? DEFAULT_LOAD_MS);
     }
 
@@ -448,6 +570,11 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       listeners.clear();
     },
   };
+}
+
+function appliesTo(option: ForSources | undefined, source: SourceId, playable: Playable) {
+  if (typeof option === "function") return option(source, playable);
+  return option === true || (Array.isArray(option) && option.includes(source));
 }
 
 /**

@@ -6,15 +6,22 @@
 import { SOURCES, type SourceId } from "../../../utils/sources";
 import type { AdapterFactory } from "./adapter";
 import { createCineSrcAdapter } from "./cinesrc";
+import { createVidFastAdapter } from "./vidfast";
 
 export const SYNCABLE_SOURCE_ADAPTERS = {
   cinesrc: createCineSrcAdapter,
+  vidfast: createVidFastAdapter,
 } satisfies Partial<Record<SourceId, AdapterFactory>>;
 
 export type AdaptedSourceId = keyof typeof SYNCABLE_SOURCE_ADAPTERS;
 
 export function hasAdapter(id: SourceId): id is AdaptedSourceId {
   return id in SYNCABLE_SOURCE_ADAPTERS;
+}
+
+/** Whether a Watch Party on `id` can change the playback speed (its adapter's `canSetRate`; VidFast's cannot). */
+export function canSetRate(id: SourceId): boolean {
+  return hasAdapter(id) && SYNCABLE_SOURCE_ADAPTERS[id].canSetRate;
 }
 
 /** The Syncable Sources a Watch Party uses, best first: the Source catalog's order. */

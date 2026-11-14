@@ -5,6 +5,7 @@
  * on the one device that takes part.
  */
 import type { Viewer } from "../../models/Viewer";
+import type { SourceId } from "../../utils/sources";
 import type { DeviceId } from "../connection/protocol";
 import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
@@ -86,8 +87,13 @@ export interface DeviceWatchParty {
   /** Ends the Watch Party for both Viewers ("Cancel" while it waits). */
   cancel(): void;
   dismissEnded(): void;
-  /** Party sync: this device's player loaded Watch Party `partyId`'s Title (`episode` of it, for a TV show). */
-  playerReady(partyId: string, episode: Episode | null): void;
+  /**
+   * Party sync: this device's player loaded Watch Party `partyId`'s Title
+   * (`episode` of it, for a TV show) on `source`.
+   */
+  playerReady(partyId: string, episode: Episode | null, source: SourceId): void;
+  /** Party sync: `source` could not play Watch Party `partyId`'s Title (`episode` of it) on this device. */
+  playerFailed(partyId: string, episode: Episode | null, source: SourceId): void;
   /** Party sync: the Viewer changed playback in this device's player. */
   playback(partyId: string, change: PlaybackChange): void;
   /**
@@ -114,6 +120,11 @@ export interface DeviceWatchParty {
   keepWatchingAlone(): void;
   /** "Stop" (or closing the player after the other Viewer left): closes the player. */
   stop(): void;
+  /**
+   * Moves both Viewers' players to another Syncable Source, at the current
+   * position: the one the Watch Party's `fallback` offers, or any other.
+   */
+  switchSource(source: SourceId): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -324,8 +335,12 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       changed();
     },
 
-    playerReady(partyId, episode) {
-      client.send({ type: "watchParty:player", partyId, status: "ready", episode });
+    playerReady(partyId, episode, source) {
+      client.send({ type: "watchParty:player", partyId, status: "ready", episode, source });
+    },
+
+    playerFailed(partyId, episode, source) {
+      client.send({ type: "watchParty:player", partyId, status: "failed", episode, source });
     },
 
     playback(partyId, change) {
@@ -359,6 +374,12 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       left = null;
       stayedIn = null;
       changed();
+    },
+
+    switchSource(source) {
+      const current = live();
+      if (!current || !activeHere() || current.source === source) return;
+      client.send({ type: "watchParty:source", partyId: current.id, source });
     },
 
     subscribe(listener) {

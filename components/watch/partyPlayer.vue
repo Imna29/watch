@@ -8,7 +8,8 @@
  */
 import { VIEWER_NAMES } from "~/models/Viewer";
 import { describeChange } from "~/realtime/watchParty/changeMessage";
-import { getSource } from "~/utils/sources";
+import { WATCH_PARTY_SOURCES } from "~/realtime/watchParty/sources";
+import { getSource, type SourceId } from "~/utils/sources";
 
 const watchParty = useWatchParty();
 // Shown only for a Watch Party (`playerParty`), which stays this player's.
@@ -37,6 +38,20 @@ watch(() => party.value.episode, (episode) => {
 watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
     watchParty.changeEpisode({ season, episode });
 });
+
+// Source fallback: once the Source fails on either device, both Viewers are offered the next Syncable
+// Source; once none is left, Tab Share. The Source picker switches both players at any time.
+const failedNames = computed(() => party.value.failedSources.map((id) => getSource(id).name).join(" and "));
+const offeredSource = computed(() => (party.value.fallback?.kind === "source" ? party.value.fallback.source : null));
+const sourceOptions = WATCH_PARTY_SOURCES.map((id) => getSource(id));
+const sourcePickerId = useId();
+const chosenSource = ref<SourceId>(initial.source);
+watch(() => party.value.source, (source) => {
+    chosenSource.value = source;
+});
+watch(chosenSource, (source) => {
+    watchParty.switchSource(source);
+});
 </script>
 
 <template>
@@ -53,6 +68,14 @@ watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
                 </div>
             </div>
             <div v-else-if="view.countdown !== null" class="text-9xl font-bold drop-shadow-lg">{{ view.countdown }}</div>
+            <div v-else-if="party.fallback && !alone"
+                class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4 text-center">
+                <span class="text-xl">{{ failedNames }} couldn't play {{ party.title.name }}.</span>
+                <Button v-if="offeredSource" @click="watchParty.switchSource(offeredSource)">
+                    Try {{ getSource(offeredSource).name }}
+                </Button>
+                <!-- No Syncable Source is left (fallback "tab-share"): Tab Share is offered here. -->
+            </div>
             <div v-else-if="view.player === 'failed'"
                 class="pointer-events-auto rounded-lg bg-black/80 px-6 py-4 text-center">
                 {{ sourceName }} couldn't play this Title.
@@ -80,9 +103,17 @@ watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
             </div>
         </div>
         <template #controls>
-            <WatchEpisodePicker v-if="party.episode && !alone" v-model:season="chosen.season"
-                v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
-            <span class="px-2 text-muted-color">Watching {{ alone ? "alone" : "together" }} on {{ sourceName }}</span>
+            <template v-if="alone">
+                <span class="px-2 text-muted-color">Watching alone on {{ sourceName }}</span>
+            </template>
+            <template v-else>
+                <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season"
+                    v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
+                <label :for="sourcePickerId" class="px-1">Watching together on</label>
+                <Select v-model="chosenSource" :label-id="sourcePickerId" aria-label="Source" class="rounded p-2"
+                    :options="sourceOptions" option-value="id" option-label="name" append-to="self">
+                </Select>
+            </template>
         </template>
     </WatchPlayerShell>
 </template>
