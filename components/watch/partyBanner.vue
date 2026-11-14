@@ -17,6 +17,8 @@ import type { TitleRef } from "~/realtime/presence/protocol";
 const ENDED_NOTICE_MS = 10_000;
 
 const { state, join, replace, dismissChoice, cancel, dismissEnded } = useWatchParty();
+/** The minimized Watch Party player sits in the bottom left corner: the banner goes above it. */
+const partyPlayerMinimized = usePartyPlayerMinimized();
 
 /** This Viewer takes part from another device; "Watch here" takes the Watch Party over on this one. */
 const elsewhere = computed(() => {
@@ -43,7 +45,7 @@ function endedMessage({ reason, by }: EndedNotice) {
         case "cancelled":
             return `${VIEWER_NAMES[by]} ended the Watch Party of`;
         case "gone":
-            return `${VIEWER_NAMES[by]} went offline, ending the invite to`;
+            return `${VIEWER_NAMES[by]} has been away from the site for two minutes, ending the invite to`;
     }
 }
 
@@ -64,8 +66,8 @@ const teleportTo = computed(() => fullscreenElement.value ?? "body");
 
 <template>
     <Teleport :to="teleportTo">
-        <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex w-max max-w-[calc(100vw-2rem)] flex-col gap-2"
-            aria-live="polite">
+        <div class="fixed left-1/2 -translate-x-1/2 z-50 flex w-max max-w-[calc(100vw-2rem)] flex-col gap-2"
+            :class="partyPlayerMinimized ? 'bottom-52' : 'bottom-4'" aria-live="polite">
             <div v-if="state.invite" class="flex items-center gap-3 rounded-lg bg-surface-900/95 py-2 pl-4 pr-3 shadow-lg">
                 <span>{{ VIEWER_NAMES[state.invite.starter] }} started <i>{{ label(state.invite) }}</i></span>
                 <Button size="small" @click="join()">Join</Button>

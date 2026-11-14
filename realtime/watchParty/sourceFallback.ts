@@ -8,8 +8,8 @@
  */
 import { z } from "zod";
 import { SOURCES, type SourceId } from "../../utils/sources";
-import { anchorAt } from "./partySync";
-import type { SourceFallback, SwitchSourceMessage, WatchPartyState } from "./protocol";
+import { partyIntentSchema } from "./intentSchema";
+import { anchorAt, type SourceFallback, type SwitchSourceMessage, type WatchPartyState } from "./protocol";
 import { canSetRate } from "./sources";
 
 /** A Source of the Source catalog, sent by a device. */
@@ -17,9 +17,7 @@ export const sourceIdSchema = z.custom<SourceId>(
   (value) => typeof value === "string" && SOURCES.some((source) => source.id === value),
 );
 
-export const switchSourceSchema = z.object({
-  type: z.literal("watchParty:source"),
-  partyId: z.string().max(100),
+export const switchSourceSchema = partyIntentSchema("watchParty:source").extend({
   source: sourceIdSchema,
 }) satisfies z.ZodType<SwitchSourceMessage>;
 

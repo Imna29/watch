@@ -371,6 +371,43 @@ describe.each(syncableSourcesUnderTest())("Tab Share in a Watch Party on %s", (s
       expect(giorgi.watchParty.party).toMatchObject({ mode: "tab-share", phase: { name: "paused" } });
       expect(seesTab(giorgi)).toBe("mariam1 tab");
     });
+
+    it("stops once the sharer has been gone a while: the other Viewer is told, and waits for her on the Syncable Source", async () => {
+      const { h, giorgi, mariam } = await watchingTogether();
+      mariam.tabShare.start("vidsrc-cc");
+      await h.advanceAsync(SECOND);
+      const position = giorgi.watchParty.party!.anchor.position;
+
+      mariam.closeSite(); // Her laptop's battery dies.
+      await h.advanceAsync(20 * SECOND);
+      expect(giorgi.watchParty.party).toMatchObject({ mode: "tab-share" });
+
+      let told: string | null = null;
+      for (let waited = 0; waited < 20 * SECOND && !told; waited += 100) {
+        await h.advanceAsync(100);
+        told = message(giorgi);
+      }
+      expect(told).toBe("Mariam went offline, so the Tab Share stopped");
+      await h.advanceAsync(10 * SECOND);
+      expect(giorgi.watchParty.party).toMatchObject({
+        mode: "syncable-source",
+        tabShare: null,
+        phase: { name: "waiting", viewer: "mariam", reason: "disconnected" },
+      });
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      expect(giorgi.player).toMatchObject({ sourceId: source, ready: true, paused: true });
+      expect(giorgi.player!.position).toBeCloseTo(position, 0);
+      expect(seesTab(giorgi)).toBeNull();
+
+      // She comes back on her phone, and they watch on together from there.
+      const phone = h.device("mariam");
+      await h.advanceAsync(15 * SECOND);
+      expect(phone.watchParty.activeHere).toBe(true);
+      giorgi.player!.controls.play();
+      await h.advanceAsync(10 * SECOND);
+      expect(phone.player?.paused).toBe(false);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+    });
   });
 
   it("stops when the sharer reloads the page, which ends the tab's sharing: both go back to the Syncable Source", async () => {

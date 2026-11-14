@@ -20,15 +20,19 @@ per-Viewer playlists and watched-episode tracking.
 | Install | `bun install` |
 | Dev server | `bun run dev` |
 | Unit tests | `bun run test` |
-| Typecheck | `bun run typecheck` |
+| Typecheck | `bun run typecheck` (server: `bun run typecheck:server`) |
 | Production build | `bun run build` |
 | Run the production build | `bun run start` |
 | Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
-| Hash a Viewer's password | `bun run hash-password` |
+| Hash a Viewer's password | `bun run hash-password --viewer giorgi` (or `mariam`) |
 | Self-hosted stack up / down | `docker compose up -d --build --wait` / `docker compose down` (see "Self-hosting") |
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
+
+`bun run typecheck` does not cover `server/` (Nitro's own tsconfig). Check it,
+and the `realtime/` modules it imports, with `bun run typecheck:server`, which
+must report no errors.
 
 `typescript` is pinned to 6.x on purpose: `vue-tsc` (used by `nuxt typecheck`)
 cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.
@@ -48,6 +52,14 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
 - `server/viewer/signIn.ts` owns who is asking: password to Viewer, the cookie,
   throttling and the startup check. Framework-free, tested in
   `tests/server/viewerSignIn.test.ts` with a fake clock.
+- Known limit: one password for both Viewers. Each hash has its own salt, so
+  the startup check only catches the same hash pasted twice; the server
+  cannot tell two hashes of one password apart from the hashes alone. When
+  such a password is used, the sign-in signs nobody in and logs a
+  configuration error. To prevent it, `bun run hash-password` refuses the
+  other Viewer's password when it has their hash (from the environment,
+  which bun loads from `.env`, or `--other-hash <hash>`); `--viewer` says
+  whose password it is.
 - `server/middleware/viewer.ts` rejects every API request without a valid
   cookie except `POST /api/sign-in`. WebSocket upgrades bypass Nitro
   middleware: authorize them with
@@ -82,8 +94,8 @@ relays setup between the two Viewers' Call devices. The browser's media and
 `RTCPeerConnection` come in through `CallPlatform` (`realtime/call/platform.ts`):
 `browserCallPlatform` in the browser, fakes in seam 1 (`harness/fakeMedia.ts`).
 Its UI, `<WatchCall>`, sits in `layouts/watchLayout.vue` and teleports its
-tiles into the open player shell (`usePlayerOverlayHost()`), so they stay
-visible in the shell's fullscreen. ICE servers come from
+tiles into the open player's frame (`<WatchPlayerFrame>`, `usePlayerOverlayHost()`), so they stay
+visible in its fullscreen. ICE servers come from
 `GET /api/call/ice-servers` (`server/call/relay.ts`: `TURN_HOST`, `TURN_SECRET`).
 
 The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
@@ -92,7 +104,9 @@ The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
   CineSrc, then VidFast. A factory states `canSetRate` (VidFast: no speed
   command), which the coordinator reads through `canSetRate()`.
 - `partySync.ts`: on the device that takes part, joins an adapter to the
-  connection (`usePartySync` in `composables/useWatchParty.ts`).
+  connection (`usePartySync` in `composables/useWatchParty.ts`). Its parts are in
+  `partySync/`: echoes, position reports (stall, "Click to resume"), the
+  ending, and the player status that drives Source fallback.
 Each Viewer takes part from one active device, the newest they joined from.
 The coordinator handles an intent only from that device, unless
 `FROM_ANY_DEVICE` (`coordinator.ts`) lists it: list there an intent any
@@ -100,7 +114,7 @@ device of a Viewer may send.
 Shared controls: party sync turns a Viewer's play, pause, seek or speed in
 the Source's own player into a `watchParty:playback` intent
 (`sharedControls.ts` on the server), and every command it gives the player
-is noted as an expected echo (`createEchoes` in `partySync.ts`), so the
+is noted as an expected echo (`createEchoes` in `partySync/echoes.ts`), so the
 player's report of it is never sent back. A new command party sync gives
 must be noted the same way. Devices drop a state whose `seq` is older than
 one they have.
@@ -123,20 +137,37 @@ Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
 Party ends ("left") and the other device keeps its player open
 (`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
 Party sync stays bound to the Watch Party it opened for.
+"Minimize" shrinks the Watch Party player to a mini-player in the bottom
+left corner (`usePartyPlayerMinimized`, UI state only): the same iframe and
+party sync keep running, its overlays and the Call's dock leave it, and the
+Viewer browses the site. "Watch together" on another Title from there
+replaces the Watch Party (`start` in `device.ts`).
 Staying in step (`drift.ts` on the server):
 - Party sync reports its player's position on the server's clock every
   second (`watchParty:position`). It skips the report while a seek is on its
   way and at the end of the Title.
-- Under 0.5 s off is left alone. Further off, the coordinator tells that
-  device to catch up (`watchParty:catchUp`).
-- More than 2 s behind, or `stalled`, the Watch Party goes to the `waiting`
-  phase, frozen where it was. `stalled` means no time update for 2 s, or a
-  play command the browser refused, which shows "Click to resume". The Viewer
-  who fell behind plays on up to the frozen point; once every player is
-  there, all start again at one moment just ahead.
+- Drift is the spread between the two players' latest reports (each one's
+  offset from the anchor at its report's time), never one player against
+  the anchor, and no player is rewound to correct it. Under 0.5 s apart is
+  left alone. Up to 2 s, the one behind is told to catch up
+  (`watchParty:catchUp`); when the one ahead is off the anchor, the anchor
+  moves to it instead and the one behind follows. Its reports from before
+  the catch-up could reach it are ignored.
+- A seek party sync gives aims ahead by how long the player's last seek took
+  (`seekTo` in `partySync.ts`), and one that still lands behind a playing
+  Watch Party is made once more, so slow seeks converge.
+- More than 2 s apart, `stalled`, or a third catch-up within 30 s: the Watch
+  Party goes to the `waiting` phase, frozen where the player furthest ahead
+  is. `stalled` means no time update for 2 s, or a play command the browser
+  refused, which shows "Click to resume". The Viewer who fell behind plays on
+  up to the frozen point; once every player is there, all start again at one
+  moment just ahead.
 - An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
-  for the same way, from where it left. A waiting invite ends instead
-  ("gone").
+  for the same way, from where it left; also before the Title starts (the
+  countdown's ready gate), which then starts once everyone is there instead
+  of "Getting ready…" forever. A waiting invite stays while the
+  starter has any device on the site, and ends ("gone") once they have had
+  none for 2 minutes (`INVITE_GRACE_MS`).
 - The Device a Viewer takes part from rejoins when it connects again (same
   `DeviceKey`): the coordinator points `activeDevices` at its new connection.
   While the Watch Party waits for a Viewer whose device is gone, any device
@@ -146,7 +177,11 @@ Staying in step (`drift.ts` on the server):
 - A Tab Share is left alone: it stands still anyway, and position reports
   are among the intents it ignores. Its sharer keeps sharing across a
   reconnect (same Device). A reload loses the tab, so the reloaded page stops
-  the Tab Share and both go back to the Syncable Source.
+  the Tab Share and both go back to the Syncable Source. A sharer whose
+  active device has been gone for 30 s (`TAB_SHARE_GONE_MS`) has gone for
+  good: the coordinator stops the Tab Share, tells the other Viewer
+  (`lastChange` "sharer-gone"), and waits for the sharer on the Syncable
+  Source, paused.
 Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
 `watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
 sharer, Source, sound). It stands still, paused, and the coordinator ignores
@@ -197,6 +232,15 @@ The VPS needs:
   - 49160-49200/udp: the relay range
 - `TURN_EXTERNAL_IP` set to its public IPv4 address. If it is left empty,
   coturn looks the address up as it starts.
+
+Known limits of the Call's relay (follow-ups, not done yet):
+- No TURN over TLS. coturn only listens on 3478 (UDP and TCP), so a network
+  that allows nothing but TLS on 443 cannot reach the relay, and the Call
+  fails there. The fix is a `turns:` listener on 5349 using Caddy's
+  certificate, offered in `server/call/relay.ts` next to the `turn:` URLs.
+- Without `TURN_HOST` and `TURN_SECRET` (development), `GET
+  /api/call/ice-servers` returns no ICE servers at all, not even STUN, so
+  devices only connect directly: on one machine or one local network.
 
 To run the stack locally, keep its settings in a separate file such as
 `.env.stack` (gitignored). Use `DOMAIN=localhost` and `TURN_EXTERNAL_IP=127.0.0.1`,

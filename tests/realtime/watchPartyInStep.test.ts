@@ -52,6 +52,16 @@ function biggestJump(changes: { value: number }[]) {
   return Math.max(0, ...changes.slice(1).map(({ value }, i) => Math.abs(value - changes[i]!.value)));
 }
 
+/** The biggest step back `track` saw a position take between two looks, in seconds (0: it never went back). */
+function biggestStepBack(changes: { value: number }[]) {
+  return Math.max(0, ...changes.slice(1).map(({ value }, i) => changes[i]!.value - value));
+}
+
+/** How many times `track` saw a position jump (a seek), rather than move on as it plays. */
+function jumps(changes: { value: number }[]) {
+  return changes.slice(1).filter(({ value }, i) => Math.abs(value - changes[i]!.value) > 0.3).length;
+}
+
 /** How far `a`'s player is from `b`'s, in seconds. */
 function apart(a: TestDevice, b: TestDevice) {
   return Math.abs(a.player!.position - b.player!.position);
@@ -121,6 +131,78 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(apart(giorgi, mariam)).toBeLessThan(0.5);
     });
 
+    it("never rewinds the Viewer who is ahead: the one behind moves forward to them", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      // Giorgi's stream skips a second ahead.
+      giorgi.player!.skip(1);
+      const seen = track(h, 10 * SECOND, {
+        giorgiPosition: () => giorgi.player!.position,
+        mariamPosition: () => mariam.player!.position,
+        giorgiPaused: () => giorgi.player!.paused,
+        waitingFor: () => giorgi.partySync!.view.waitingFor ?? mariam.partySync!.view.waitingFor,
+      });
+
+      expect(biggestStepBack(seen.giorgiPosition)).toBe(0);
+      expect(biggestStepBack(seen.mariamPosition)).toBe(0);
+      expect(values(seen.giorgiPaused)).toEqual([false]);
+      expect(values(seen.waitingFor)).toEqual([null]);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+
+    it("is corrected without stuttering when the player behind takes a while to seek", () => {
+      const { h, giorgi, mariam } = watchingTogether({ mariam: { seekMs: 1500 } });
+
+      mariam.player!.stall(SECOND);
+      const seen = track(h, 30 * SECOND, {
+        mariamPosition: () => mariam.player!.position,
+        giorgiPaused: () => giorgi.player!.paused,
+        waitingFor: () => giorgi.partySync!.view.waitingFor ?? mariam.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.giorgiPaused)).toEqual([false]);
+      expect(values(seen.waitingFor)).toEqual([null]);
+      // Her first seek tells how long one takes; the next one aims that far ahead.
+      expect(jumps(seen.mariamPosition)).toBeLessThanOrEqual(2);
+      expect(biggestStepBack(seen.mariamPosition)).toBe(0);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+
+    it("makes nobody wait when the player behind takes longer than 2 seconds to seek", () => {
+      const { h, giorgi, mariam } = watchingTogether({ mariam: { seekMs: 2500 } });
+
+      mariam.player!.stall(SECOND);
+      const seen = track(h, 30 * SECOND, {
+        mariamPosition: () => mariam.player!.position,
+        giorgiPaused: () => giorgi.player!.paused,
+        waitingFor: () => giorgi.partySync!.view.waitingFor ?? mariam.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.giorgiPaused)).toEqual([false]);
+      expect(values(seen.waitingFor)).toEqual([null]);
+      expect(jumps(seen.mariamPosition)).toBeLessThanOrEqual(2);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+
+    it("that keeps coming back is waited for, rather than caught up again and again", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      // Mariam's stream keeps stalling for a second, every few seconds.
+      const seen: (string | null)[] = [];
+      for (let stall = 0; stall < 6; stall += 1) {
+        mariam.player!.stall(SECOND);
+        for (let waited = 0; waited < 5 * SECOND; waited += 100) {
+          h.advance(100);
+          seen.push(giorgi.partySync!.view.waitingFor);
+        }
+      }
+
+      expect(seen).toContain("mariam");
+      h.advance(20 * SECOND);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+
     it("under half a second is left alone", () => {
       const { h, giorgi, mariam } = watchingTogether();
 
@@ -163,6 +245,30 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       // ...and nobody missed anything: neither player skipped ahead.
       expect(biggestJump(seen.giorgiPosition)).toBeLessThan(0.5);
       expect(biggestJump(seen.mariamPosition)).toBeLessThan(0.5);
+    });
+  });
+
+  describe("a Viewer far ahead of the other", () => {
+    it("waits, unrewound, with \"Waiting for Mariam…\", while the Viewer behind plays on up to them", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      // Giorgi's stream skips three seconds ahead.
+      giorgi.player!.skip(3);
+      const seen = track(h, 20 * SECOND, {
+        giorgiPosition: () => giorgi.player!.position,
+        mariamPosition: () => mariam.player!.position,
+        giorgiPlaying: () => !giorgi.player!.paused,
+        mariamPlaying: () => !mariam.player!.paused,
+        waitingFor: () => giorgi.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.waitingFor)).toEqual([null, "mariam", null]);
+      expect(values(seen.giorgiPlaying)).toEqual([true, false, true]);
+      expect(biggestStepBack(seen.giorgiPosition)).toBe(0);
+      // Mariam misses nothing: she plays through to where Giorgi waits.
+      expect(jumps(seen.mariamPosition)).toBe(0);
+      expect(seen.mariamPlaying.at(-1)!.value).toBe(true);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
     });
   });
 
@@ -255,6 +361,33 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(giorgi.player?.paused).toBe(false);
       expect(giorgi.player!.position).toBeGreaterThan(waitingAt);
       expect(apart(giorgi, phone)).toBeLessThan(0.5);
+    });
+
+    it("before the Title starts is waited for with \"Waiting for Giorgi…\", rather than getting ready forever", () => {
+      const h = createHarness({ syncableSource: source });
+      // Giorgi's player takes a while to load.
+      const laptop = h.device("giorgi", { player: { loadMs: 15 * SECOND } });
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(SECOND);
+      mariam.watchParty.join();
+      h.advance(2 * SECOND);
+      expect(mariam.partySync?.view.gettingReady).toBe(true);
+
+      laptop.closeSite(); // before his player is ready
+      h.advance(10 * SECOND);
+      expect(mariam.partySync?.view).toMatchObject({ gettingReady: false, waitingFor: "giorgi" });
+      expect(mariam.player?.paused).toBe(true);
+
+      // He comes back on another device, and the Title starts for both.
+      const phone = h.device("giorgi");
+      h.advance(15 * SECOND);
+      expect(phone.watchParty.activeHere).toBe(true);
+      expect(mariam.partySync?.view.waitingFor).toBeNull();
+      expect(phone.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(apart(phone, mariam)).toBeLessThan(0.5);
     });
 
     it("leaves it to her whether a device of hers that was open all along takes part", () => {
@@ -379,7 +512,32 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
   });
 
   describe("an invite still waiting for the other Viewer", () => {
-    it("ends once the starter's device has been gone a few seconds", () => {
+    it("stays while the starter has a device on the site, for the other Viewer to join when they come", () => {
+      const h = createHarness({ syncableSource: source });
+      const laptop = h.device("giorgi");
+      const phone = h.device("giorgi");
+      h.advance(SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+
+      // Giorgi closes the laptop he started from; his phone stays on the site.
+      laptop.closeSite();
+      h.advance(10 * MINUTE);
+      expect(phone.watchParty.elsewhere).toMatchObject({ title: DUNE, phase: { name: "inviting" } });
+
+      // Mariam opens the site long after the invite was sent.
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: DUNE });
+      mariam.watchParty.join();
+      phone.watchParty.join(); // "Watch here"
+      h.advance(15 * SECOND);
+      expect(phone.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(apart(phone, mariam)).toBeLessThan(0.5);
+    });
+
+    it("ends once the starter has had no device on the site for two minutes", () => {
       const h = createHarness({ syncableSource: source });
       const giorgi = h.device("giorgi");
       const mariam = h.device("mariam");
@@ -389,15 +547,31 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(mariam.watchParty.invite).not.toBeNull();
 
       giorgi.closeSite();
-      h.advance(3 * SECOND);
+      h.advance(MINUTE + 50 * SECOND);
       expect(mariam.watchParty.invite).not.toBeNull();
 
-      h.advance(5 * SECOND);
+      h.advance(15 * SECOND);
       expect(mariam.watchParty.invite).toBeNull();
       expect(mariam.watchParty.ended).toMatchObject({ title: DUNE, reason: "gone", by: "giorgi" });
       const later = h.device("mariam");
       h.advance(SECOND);
       expect(later.watchParty.invite).toBeNull();
+    });
+
+    it("is not ended by a starter who comes back within the two minutes", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+
+      giorgi.drop();
+      h.advance(MINUTE);
+      giorgi.restore();
+      h.advance(2 * MINUTE);
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: DUNE });
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
     });
   });
 });

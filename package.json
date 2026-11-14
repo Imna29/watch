@@ -15,7 +15,8 @@
     "db:studio": "drizzle-kit studio",
     "hash-password": "bun scripts/hash-password.ts",
     "test": "vitest run",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "typecheck:server": "tsc -p .nuxt/tsconfig.server.json --noEmit"
   },
   "dependencies": {
     "@lucide/vue": "^1.72.0",

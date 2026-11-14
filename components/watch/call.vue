@@ -11,7 +11,6 @@
  */
 import { GripVertical, Phone } from "@lucide/vue";
 import { VIEWER_NAMES } from "~/models/Viewer";
-import type { MediaProblem } from "~/realtime/call/device";
 
 const { state, join } = useCall();
 const presence = useOtherViewerPresence();
@@ -39,49 +38,19 @@ const otherNote = computed(() => {
     return undefined;
 });
 
-const DEVICE_NAMES = { mic: "Microphone", camera: "Camera" } as const;
-
-function problemMessage(device: keyof typeof DEVICE_NAMES, problem: MediaProblem) {
-    const name = DEVICE_NAMES[device];
-    const turnOn =
-        device === "camera"
-            ? "turn the camera on"
-            : state.value.pushToTalk.on
-              ? "hold to talk"
-              : "turn the microphone on";
-    switch (problem) {
-        case "blocked":
-            return `${name} blocked. Allow it in your browser's site settings (left of the address bar), then ${turnOn} again.`;
-        case "not-found":
-            return `No ${name.toLowerCase()} found. Connect one, then ${turnOn} again.`;
-        case "in-use":
-            return `${name} is in use by another app, or blocked by your system. Close that app, then ${turnOn} again.`;
-        case "unsupported":
-            return `This page can't use the ${name.toLowerCase()} (it needs HTTPS).`;
-        default:
-            return `${name} could not start. Try to ${turnOn} again.`;
-    }
-}
-
 const problems = computed(() => {
-    const { mic, camera } = state.value;
+    const { mic, camera, pushToTalk } = state.value;
     return [
-        mic.problem && problemMessage("mic", mic.problem),
-        camera.problem && problemMessage("camera", camera.problem),
+        mic.problem && mediaProblemMessage("mic", mic.problem, { pushToTalk: pushToTalk.on }),
+        camera.problem && mediaProblemMessage("camera", camera.problem),
     ].filter((message): message is string => !!message);
 });
 
 // The other Viewer's voice. Played here, outside the dock, so moving the
 // dock in and out of the player never interrupts it.
 const voice = useTemplateRef<HTMLAudioElement>("voice");
-watchEffect(() => {
-    const element = voice.value;
-    if (!element) return;
-    const track = (state.value.remote.mic as MediaStreamTrack | null) ?? null;
-    const current = (element.srcObject as MediaStream | null)?.getTracks()[0] ?? null;
-    if (current === track) return;
-    element.srcObject = track ? new MediaStream([track]) : null;
-    if (track) element.play().catch(() => {});
+useMediaTracks(voice, () => [state.value.remote.mic], (element) => {
+    element.play().catch(() => {});
 });
 </script>
 

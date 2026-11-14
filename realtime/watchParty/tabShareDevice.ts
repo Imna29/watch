@@ -18,8 +18,9 @@ import type { SourceId } from "../../utils/sources";
 import type { DeviceCall, MediaProblem } from "../call/device";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
+import { createListeners } from "../listeners";
 import type { DeviceWatchParty } from "./device";
-import type { WatchPartyState } from "./protocol";
+import { sharesTab, type WatchPartyState } from "./protocol";
 import { canShareTab } from "./tabShare";
 
 export interface TabShareState {
@@ -60,7 +61,7 @@ export interface DeviceTabShareOptions {
 const START_TIMEOUT_MS = 10_000;
 
 export function createDeviceTabShare({ client, watchParty, call, clock }: DeviceTabShareOptions): DeviceTabShare {
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   /** While this device starts a Tab Share: for which Watch Party, and (once asked for) until when it waits. */
   let starting: { partyId: string; timer: TimerId | null } | null = null;
   let problem: MediaProblem | null = null;
@@ -68,7 +69,7 @@ export function createDeviceTabShare({ client, watchParty, call, clock }: Device
   let stopping: string | null = null;
 
   function changed() {
-    for (const listener of [...listeners]) listener();
+    listeners.notify();
   }
 
   function me(): Viewer | null {
@@ -84,7 +85,7 @@ export function createDeviceTabShare({ client, watchParty, call, clock }: Device
   /** Whether the shared state says this device shares its tab. */
   function sharingHere() {
     const party = partyHere();
-    return party?.mode === "tab-share" && party.tabShare?.sharer === me();
+    return party?.mode === "tab-share" && sharesTab(party, me());
   }
 
   function doneStarting() {
@@ -163,9 +164,6 @@ export function createDeviceTabShare({ client, watchParty, call, clock }: Device
       client.send({ type: "watchParty:stopTabShare", partyId: party.id });
     },
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: listeners.subscribe,
   };
 }

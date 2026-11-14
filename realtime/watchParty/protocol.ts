@@ -44,7 +44,10 @@ export type WatchPartyEndReason =
   | "finished"
   /** A Viewer closed the player: the other Viewer keeps watching alone, or stops. */
   | "left"
-  /** The starter's device went away while the Watch Party still waited for the other Viewer. */
+  /**
+   * While the Watch Party still waited for the other Viewer, its starter had
+   * no device on the site for two minutes (`INVITE_GRACE_MS` in `./drift.ts`).
+   */
   | "gone";
 
 /**
@@ -82,6 +85,11 @@ export interface TabShare {
   sharer: Viewer;
   source: SourceId;
   sound: boolean;
+}
+
+/** Whether `viewer` is the one sharing their tab in `party`'s Tab Share (or the one it ended in). */
+export function sharesTab(party: Pick<WatchPartyState, "tabShare">, viewer: Viewer | null): boolean {
+  return viewer !== null && party.tabShare?.sharer === viewer;
 }
 
 /**
@@ -185,17 +193,36 @@ export type PlaybackChange =
   | { kind: "rate"; position: number; rate: number };
 
 /**
- * A change `by` made, in the shared state numbered `seq`. "next-cancelled":
- * they cancelled "Next episode in 10s", so both stay at the end of the episode.
- * "tab-share-stopped": they stopped a Tab Share (theirs or the other Viewer's).
+ * A change a Viewer made, for the other Viewer's change message.
+ * "next-cancelled": they cancelled "Next episode in 10s", so both stay at the
+ * end of the episode. "tab-share-stopped": they stopped a Tab Share (theirs
+ * or the other Viewer's). "sharer-gone": their device, which shared its tab,
+ * was gone so long that the Tab Share stopped (`TAB_SHARE_GONE_MS` in
+ * `./drift.ts`).
  */
-export type WatchPartyChange = (
+export type ChangeMade =
   | PlaybackChange
   | { kind: "episode"; episode: Episode }
   | { kind: "source"; source: SourceId }
   | { kind: "next-cancelled" }
   | { kind: "tab-share-stopped" }
-) & { by: Viewer; seq: number };
+  | { kind: "sharer-gone" };
+
+/** A change `by` made, in the shared state numbered `seq`. */
+export type WatchPartyChange = ChangeMade & { by: Viewer; seq: number };
+
+/**
+ * For the coordinator: what the shared state after `party` says about the
+ * change `by` made to it, `change`. That state is numbered next after
+ * `party`, so the change is news only in it.
+ */
+export function changeMadeBy(
+  party: WatchPartyState,
+  by: Viewer,
+  change: ChangeMade,
+): Pick<WatchPartyState, "lastChangeBy" | "lastChange"> {
+  return { lastChangeBy: by, lastChange: { ...change, by, seq: party.seq + 1 } };
+}
 
 /**
  * Whether Viewers control playback in this phase: both are in and the Title
@@ -229,6 +256,9 @@ export interface SwitchSourceMessage {
   partyId: string;
   source: SourceId;
 }
+
+/** How often party sync reports where its player is (`PositionMessage`). */
+export const POSITION_REPORT_MS = 1000;
 
 /**
  * Where this device's player is, sent every `POSITION_REPORT_MS` (`./drift.ts`)

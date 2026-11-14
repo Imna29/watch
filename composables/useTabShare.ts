@@ -23,12 +23,8 @@ export function firstTabShareSource(party: Pick<WatchPartyState, "failedSources"
 export function useTabShare() {
     const { tabShare } = useRealtime();
     const read = (): TabShareSnapshot => ({ ...tabShare.state, canStart: tabShare.canStart });
-    const state = shallowRef(read());
-    onScopeDispose(tabShare.subscribe(() => {
-        state.value = read();
-    }));
     return {
-        state: shallowReadonly(state),
+        state: useDeviceState(read, tabShare.subscribe),
         /** Shares this tab, playing `source`. Call it from the Viewer's click: the browser asks only then. */
         start: (source: SourceId) => tabShare.start(source),
         changeSource: (source: SourceId) => tabShare.changeSource(source),

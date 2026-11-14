@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
     appendResponseHeader(event, "set-cookie", result.setCookie);
     return { viewer: result.viewer };
   }
+  // The sign-in logged the configuration problem for the operator.
+  if (result.outcome === "misconfigured") {
+    throw createError({ statusCode: 500, statusMessage: "Sign-in is misconfigured" });
+  }
 
   if (result.retryAfterSeconds > 0) {
     setResponseHeader(event, "retry-after", result.retryAfterSeconds);

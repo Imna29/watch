@@ -8,12 +8,8 @@ import type { CallState } from "~/realtime/call/device";
  */
 export function useCall() {
     const { call } = useRealtime();
-    const state = shallowRef<CallState>(call.state);
-    onScopeDispose(call.subscribe(() => {
-        state.value = call.state;
-    }));
     return {
-        state: shallowReadonly(state),
+        state: useDeviceState<CallState>(() => call.state, call.subscribe),
         /** Joins from this device (taking the Call over from the Viewer's other device): microphone on, camera off. */
         join: () => call.join(),
         leave: () => call.leave(),

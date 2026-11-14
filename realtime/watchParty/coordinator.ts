@@ -8,7 +8,8 @@ import { z } from "zod";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
-import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
+import { tmdbIdNumberSchema } from "../../utils/tmdbId";
+import { guardHandlers, type Device, type FeatureFactory, type MessageHandlers } from "../coordinator";
 import type { DeviceKey } from "../connection/protocol";
 import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
@@ -25,9 +26,10 @@ import type {
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
-import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
+import { changeMadeBy, takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
 import { keepInStep, positionSchema } from "./drift";
 import { afterEpisodeEnded, titleEndedSchema } from "./ending";
+import { partyIdSchema, partyIntentSchema } from "./intentSchema";
 import { afterEpisodeChange, afterPlaybackChange, episodeSchema, playbackSchema, sameEpisode } from "./sharedControls";
 import {
   afterSourceFailed,
@@ -73,27 +75,18 @@ export interface WatchPartyOptions {
   history: HistoryPort;
 }
 
-/** Ids go into Postgres `integer` columns (History, episode progress). */
-const PG_INT_MAX = 2_147_483_647;
-
 const startSchema = z
   .object({
     type: z.literal("watchParty:start"),
-    title: titleRefSchema.extend({ tmdbId: z.number().int().positive().max(PG_INT_MAX) }),
+    // The id goes into Postgres `integer` columns (History, episode progress).
+    title: titleRefSchema.extend({ tmdbId: tmdbIdNumberSchema }),
     episode: episodeSchema.nullable(),
-    replacing: z.string().max(100).nullable(),
+    replacing: partyIdSchema.nullable(),
   })
   // A movie has no episode; a TV show is always watched one episode at a time.
   .refine(({ title, episode }) => (title.contentType === WatchPlaylistItemType.MOVIE) === (episode === null));
 
-/** An intent about one Watch Party, which is ignored once that Watch Party is gone. */
-function partyIntentSchema<T extends string>(type: T) {
-  return z.object({ type: z.literal(type), partyId: z.string().max(100) });
-}
-
-const playerStatusSchema = z.object({
-  type: z.literal("watchParty:player"),
-  partyId: z.string().max(100),
+const playerStatusSchema = partyIntentSchema("watchParty:player").extend({
   status: z.enum(["ready", "failed"]),
   episode: episodeSchema.nullable(),
   source: sourceIdSchema,
@@ -134,10 +127,10 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     /** The devices whose player has the current Watch Party's Title loaded. */
     let readyDevices = new Set<DeviceId>();
     /**
-     * The Device (by key) each Viewer takes part from: when it comes back on a
-     * new connection, it takes part again from there (`rejoin`).
+     * The Device (by key) of each Viewer's active device: when it comes back
+     * on a new connection, it takes part again from there (`rejoin`).
      */
-    let seatKeys: Partial<Record<Viewer, DeviceKey>> = {};
+    let activeDeviceKeys: Partial<Record<Viewer, DeviceKey>> = {};
     let seq = 0;
     let partyCount = 0;
 
@@ -169,8 +162,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     }
 
     /** `device` becomes its Viewer's active device: returns its id for `activeDevices`. */
-    function takeSeat(device: Device) {
-      seatKeys[device.viewer] = device.key;
+    function makeActive(device: Device) {
+      activeDeviceKeys[device.viewer] = device.key;
       return device.id;
     }
 
@@ -181,11 +174,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
      * waits for its Viewer, whose active device is gone.
      */
     function rejoins(device: Device, current: WatchPartyState) {
-      const seat = current.activeDevices[device.viewer];
-      if (seat === null || seat === device.id) return false;
+      const active = current.activeDevices[device.viewer];
+      if (active === null || active === device.id) return false;
       const { phase } = current;
       const waitedFor = phase.name === "waiting" && phase.viewer === device.viewer && phase.reason === "disconnected";
-      return seatKeys[device.viewer] === device.key || waitedFor;
+      return activeDeviceKeys[device.viewer] === device.key || waitedFor;
     }
 
     /** `device` takes part again in its Viewer's place, at the shared position. */
@@ -195,7 +188,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       publish({
         ...current,
         ...inStep.rejoined(current, device.viewer),
-        activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) },
+        activeDevices: { ...current.activeDevices, [device.viewer]: makeActive(device) },
       });
     }
 
@@ -210,7 +203,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       if (previous === null || previous === device.id) return;
       // The new device's player has yet to load: it reports when it has.
       readyDevices.delete(previous);
-      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) } });
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: makeActive(device) } });
     }
 
     /**
@@ -221,18 +214,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
      * Party. A new intent is guarded unless listed there.
      */
     function onlyFromActiveDevices(handlers: MessageHandlers): MessageHandlers {
-      const guarded: Record<string, MessageHandler<DeviceMessageType>> = {};
-      for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
-        guarded[type] = FROM_ANY_DEVICE.has(type)
-          ? handler
-          : {
-              schema: handler.schema,
-              handle(from, message) {
-                if (party?.activeDevices[from.viewer] === from.id) handler.handle(from, message);
-              },
-            };
-      }
-      return guarded as MessageHandlers;
+      return guardHandlers(
+        handlers,
+        (type) => !FROM_ANY_DEVICE.has(type),
+        (from) => party?.activeDevices[from.viewer] === from.id,
+      );
     }
 
     /** Starts the 3-2-1 once both Viewers' players have loaded the Title. */
@@ -258,8 +244,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       publish({
         ...current,
         ...afterEpisodeChange(current, episode, context.now()),
-        // The seq `publish` gives this state.
-        ...(by && { lastChangeBy: by, lastChange: { kind: "episode", episode, by, seq: seq + 1 } }),
+        ...(by && changeMadeBy(current, by, { kind: "episode", episode })),
       });
       recordForBoth({ ...current, episode });
     }
@@ -301,8 +286,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               Viewer,
               DeviceId | null
             >;
-            seatKeys = {};
-            activeDevices[from.viewer] = takeSeat(from);
+            activeDeviceKeys = {};
+            activeDevices[from.viewer] = makeActive(from);
             readyDevices = new Set();
             publish({
               id: `${now.toString(36)}-${++partyCount}`,
@@ -329,7 +314,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               ...party,
               phase: { name: "countdown", endsAt: null },
               lastChangeBy: from.viewer,
-              activeDevices: { ...party.activeDevices, [from.viewer]: takeSeat(from) },
+              activeDevices: { ...party.activeDevices, [from.viewer]: makeActive(from) },
             });
             recordForBoth(party);
             startCountdownWhenReady();
@@ -374,9 +359,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...afterPlaybackChange(party, change, context.now()),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { ...change, by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, change),
             });
           },
         },
@@ -409,9 +392,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               phase: { name: "paused" },
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "next-cancelled", by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "next-cancelled" }),
             });
           },
         },
@@ -434,9 +415,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...afterSourceSwitch(party, source, context.now()),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "source", source, by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "source", source }),
             });
           },
         },
@@ -471,9 +450,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...noTabShare(),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "tab-share-stopped", by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "tab-share-stopped" }),
             });
           },
         },

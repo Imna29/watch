@@ -7,8 +7,8 @@
  * sharer's device the player shell plays the Source itself: a note says it
  * is shared, and explains when its sound is not.
  */
-import { otherViewer, VIEWER_NAMES } from "~/models/Viewer";
-import type { WatchPartyState } from "~/realtime/watchParty/protocol";
+import { otherViewerName, VIEWER_NAMES } from "~/models/Viewer";
+import { sharesTab, type WatchPartyState } from "~/realtime/watchParty/protocol";
 
 const props = defineProps<{ party: WatchPartyState }>();
 
@@ -16,32 +16,22 @@ const watchParty = useWatchParty();
 const { state: call, join } = useCall();
 
 const share = computed(() => props.party.tabShare);
-const me = computed(() => watchParty.state.value.viewer);
-const sharingHere = computed(() => !!share.value && share.value.sharer === me.value);
+const sharingHere = computed(() => sharesTab(props.party, watchParty.state.value.viewer));
 const sharerName = computed(() => (share.value ? VIEWER_NAMES[share.value.sharer] : ""));
-const otherName = computed(() => (me.value ? VIEWER_NAMES[otherViewer(me.value)] : ""));
+const otherName = computed(() => otherViewerName(watchParty.state.value.viewer));
 /** The Watch Party is on (not ended because a Viewer left). */
 const live = computed(() => props.party.phase.name !== "ended");
 
 // The other Viewer's device: the shared tab, as the Call receives it.
-const screen = useTemplateRef<HTMLVideoElement>("screen");
+const sharedTab = useTemplateRef<HTMLVideoElement>("sharedTab");
 const inCall = computed(() => call.value.status === "in");
 /** The browser refused to start the shared tab's sound by itself: the Viewer starts it. */
 const needsClick = ref(false);
 
-watchEffect(() => {
-    const element = screen.value;
-    if (!element) return;
-    const { tabVideo, tabAudio } = call.value.remote;
-    const wanted = [tabVideo, tabAudio].filter((track) => !!track) as MediaStreamTrack[];
-    const current = (element.srcObject as MediaStream | null)?.getTracks() ?? [];
-    if (wanted.length === current.length && wanted.every((track) => current.includes(track))) return;
-    element.srcObject = wanted.length > 0 ? new MediaStream(wanted) : null;
-    if (wanted.length > 0) play();
-});
+useMediaTracks(sharedTab, () => [call.value.remote.tabVideo, call.value.remote.tabAudio], play);
 
 function play() {
-    screen.value?.play().then(
+    sharedTab.value?.play().then(
         () => (needsClick.value = false),
         () => (needsClick.value = true),
     );
@@ -57,8 +47,8 @@ const status = computed(() => {
 
 <template>
     <template v-if="live && share && !sharingHere">
-        <!-- Native controls for this Viewer's own volume; fullscreen is the shell's, so the Call's tiles stay. -->
-        <video ref="screen" autoplay playsinline controls disablepictureinpicture
+        <!-- Native controls for this Viewer's own volume; fullscreen is the player frame's, so the Call's tiles stay. -->
+        <video ref="sharedTab" autoplay playsinline controls disablepictureinpicture
             controlslist="nofullscreen nodownload noplaybackrate noremoteplayback"
             class="pointer-events-auto absolute inset-0 h-full w-full bg-black object-contain"
             :aria-label="`${sharerName}'s shared tab`"></video>

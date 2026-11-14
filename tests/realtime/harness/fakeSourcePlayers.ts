@@ -89,6 +89,12 @@ export interface FakeSourcePlayer {
    */
   stall(ms: number): void;
   /**
+   * The stream skips `seconds` ahead by itself (a glitch in it): the video
+   * jumps there without a seek, so the player posts no "seeked", only its
+   * time updates from there on.
+   */
+  skip(seconds: number): void;
+  /**
    * Posts what tells the site this Source's player is ready (CineSrc's
    * "ready" message, VidFast's status), from `origin` instead of the
    * Source's own: what a page the iframe was sent to (an ad, say) could post.
@@ -552,6 +558,12 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
           stalled = null;
           since = clock.now();
         }, ms);
+      },
+      skip(seconds) {
+        if (!ready) throw new Error("A stream can only skip once the player is ready.");
+        base = Math.min(duration, video.position + seconds);
+        since = clock.now();
+        watchForTheEnd();
       },
       postReadyFrom(origin) {
         postToSite(origin, dialect.readySignal(video));

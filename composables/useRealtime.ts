@@ -13,14 +13,27 @@ export function useRealtime(): RealtimeDevice {
     return $realtime;
 }
 
+/**
+ * `read()` as a read-only ref, read again whenever one of `subscriptions`
+ * (a device module's `subscribe`) reports a change, until the calling scope
+ * ends: how Vue sees a framework-free device module's state.
+ */
+export function useDeviceState<T>(
+    read: () => T,
+    ...subscriptions: ((listener: () => void) => () => void)[]
+): Readonly<ShallowRef<T>> {
+    const state = shallowRef(read());
+    const update = () => {
+        state.value = read();
+    };
+    for (const subscribe of subscriptions) onScopeDispose(subscribe(update));
+    return shallowReadonly(state);
+}
+
 /** The other Viewer: online or not, and the Title they are watching. Null until connected. */
 export function useOtherViewerPresence(): Readonly<Ref<OtherViewerPresence | null>> {
     const { presence } = useRealtime();
-    const other = shallowRef(presence.other);
-    onScopeDispose(presence.subscribe(() => {
-        other.value = presence.other;
-    }));
-    return shallowReadonly(other);
+    return useDeviceState(() => presence.other, presence.subscribe);
 }
 
 /**

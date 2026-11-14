@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { createViewerSignIn, hashPassword } from "../../server/viewer/signIn";
+import { createViewerSignIn, hashPassword, samePasswordProblem } from "../../server/viewer/signIn";
 
 const GIORGI_PASSWORD = "giorgi's own password";
 const MARIAM_PASSWORD = "mariam's own password";
@@ -349,13 +349,50 @@ describe("the startup check", () => {
     );
   });
 
-  it("refuses to sign anyone in when one password verifies both Viewers' hashes", async () => {
+  it("signs nobody in, and logs why, when one password verifies both Viewers' hashes", async () => {
     // Hashed separately, so the salts differ and only a sign-in can tell.
+    const logged: string[] = [];
     const viewerSignIn = createViewerSignIn({
       env: { ...env, VIEWER_PASSWORD_HASH_MARIAM: await hashPassword(GIORGI_PASSWORD, CHEAP) },
       now: fakeClock().now,
+      logError: (message) => logged.push(message),
     });
 
-    await expect(viewerSignIn.signIn(GIORGI_PASSWORD, FROM_HOME)).rejects.toThrow(/same password/);
+    expect(await viewerSignIn.signIn(GIORGI_PASSWORD, FROM_HOME)).toEqual({ outcome: "misconfigured" });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/same password/);
+    expect(logged[0]).toMatch(/VIEWER_PASSWORD_HASH_GIORGI|VIEWER_PASSWORD_HASH_MARIAM/);
+  });
+});
+
+describe("hashing a new password (`bun run hash-password`)", () => {
+  it("refuses the other Viewer's password, checked against their hash in the config", async () => {
+    expect(await samePasswordProblem(MARIAM_PASSWORD, { viewer: "giorgi", env })).toMatch(/Mariam/);
+    expect(await samePasswordProblem(GIORGI_PASSWORD, { viewer: "mariam", env })).toMatch(/Giorgi/);
+  });
+
+  it("lets a Viewer's own password be hashed again", async () => {
+    expect(await samePasswordProblem(GIORGI_PASSWORD, { viewer: "giorgi", env })).toBeNull();
+    expect(await samePasswordProblem("a brand new password", { viewer: "giorgi", env })).toBeNull();
+  });
+
+  it("checks the other Viewer's hash given on the command line", async () => {
+    const otherHash = env.VIEWER_PASSWORD_HASH_MARIAM;
+
+    expect(await samePasswordProblem(MARIAM_PASSWORD, { viewer: "giorgi", env: {}, otherHash })).toMatch(
+      /other Viewer/,
+    );
+    expect(await samePasswordProblem(GIORGI_PASSWORD, { viewer: "giorgi", env: {}, otherHash })).toBeNull();
+    expect(await samePasswordProblem(GIORGI_PASSWORD, { viewer: null, env: {}, otherHash: "nonsense" })).toMatch(
+      /--other-hash/,
+    );
+  });
+
+  it("without being told whose password it is, refuses one that is already a Viewer's", async () => {
+    expect(await samePasswordProblem(MARIAM_PASSWORD, { viewer: null, env })).toMatch(/--viewer mariam/);
+  });
+
+  it("refuses nothing when no other Viewer's hash is at hand", async () => {
+    expect(await samePasswordProblem(MARIAM_PASSWORD, { viewer: "giorgi", env: {} })).toBeNull();
   });
 });

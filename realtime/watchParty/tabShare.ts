@@ -17,23 +17,26 @@
  */
 import { z } from "zod";
 import type { Viewer } from "../../models/Viewer";
-import type { MessageHandler, MessageHandlers } from "../coordinator";
+import { guardHandlers, type MessageHandlers } from "../coordinator";
 import type { DeviceMessageType } from "../protocol";
-import { anchorAt } from "./partySync";
-import type { StopTabShareMessage, TabShare, TabShareMessage, WatchPartyState } from "./protocol";
+import { partyIntentSchema } from "./intentSchema";
+import {
+  anchorAt,
+  type StopTabShareMessage,
+  type TabShare,
+  type TabShareMessage,
+  type WatchPartyState,
+} from "./protocol";
 import { sourceIdSchema } from "./sourceFallback";
 
-export const tabShareSchema = z.object({
-  type: z.literal("watchParty:tabShare"),
-  partyId: z.string().max(100),
+export const tabShareSchema = partyIntentSchema("watchParty:tabShare").extend({
   source: sourceIdSchema,
   sound: z.boolean(),
 }) satisfies z.ZodType<TabShareMessage>;
 
-export const stopTabShareSchema = z.object({
-  type: z.literal("watchParty:stopTabShare"),
-  partyId: z.string().max(100),
-}) satisfies z.ZodType<StopTabShareMessage>;
+export const stopTabShareSchema = partyIntentSchema(
+  "watchParty:stopTabShare",
+) satisfies z.ZodType<StopTabShareMessage>;
 
 /** Not in Tab Share: both Viewers watch in a Syncable Source's player. */
 export function noTabShare(): Pick<WatchPartyState, "mode" | "tabShare"> {
@@ -80,16 +83,9 @@ const ABOUT_THE_SYNCABLE_PLAYER: ReadonlySet<DeviceMessageType> = new Set([
 
 /** `handlers`, minus every intent about a Syncable Source's player while `current()` is in Tab Share. */
 export function exceptInTabShare(current: () => WatchPartyState | null, handlers: MessageHandlers): MessageHandlers {
-  const guarded: Record<string, MessageHandler<DeviceMessageType>> = {};
-  for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
-    guarded[type] = !ABOUT_THE_SYNCABLE_PLAYER.has(type)
-      ? handler
-      : {
-          schema: handler.schema,
-          handle(from, message) {
-            if (current()?.mode !== "tab-share") handler.handle(from, message);
-          },
-        };
-  }
-  return guarded as MessageHandlers;
+  return guardHandlers(
+    handlers,
+    (type) => ABOUT_THE_SYNCABLE_PLAYER.has(type),
+    () => current()?.mode !== "tab-share",
+  );
 }

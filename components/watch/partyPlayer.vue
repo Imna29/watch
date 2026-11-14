@@ -1,16 +1,17 @@
 <script setup lang="ts">
 /**
- * The Watch Party player: the player shell, run by party sync, on the one
+ * The Watch Party player: the player frame (`<WatchPlayerFrame>`), run by party sync, on the one
  * device of this Viewer that takes part. The layout shows it on every page,
  * keyed on the Watch Party, while this device takes part, and after the
  * other Viewer left it: then it asks "Keep watching alone / Stop", and plays
  * on unsynced, for this Viewer alone. In Tab Share it plays the Source the
  * sharer shares, or shows the shared tab (`<WatchTabShareView>`).
  */
-import { otherViewer, VIEWER_NAMES } from "~/models/Viewer";
+import { otherViewerName, VIEWER_NAMES } from "~/models/Viewer";
 import type { MediaProblem } from "~/realtime/call/device";
 import { describeChange } from "~/realtime/watchParty/changeMessage";
 import { playableOf } from "~/realtime/watchParty/partySync";
+import { sharesTab, type Episode } from "~/realtime/watchParty/protocol";
 import { WATCH_PARTY_SOURCES } from "~/realtime/watchParty/sources";
 import { getSource, SOURCES, type SourceId } from "~/utils/sources";
 
@@ -27,24 +28,40 @@ function close() {
     else watchParty.leave();
 }
 
+// "Minimize": the player shrinks to a corner and plays on, so the Viewer can browse; "Watch together"
+// on another Title then replaces this Watch Party. It opens full size.
+const minimized = usePartyPlayerMinimized();
+minimized.value = false;
+onBeforeUnmount(() => (minimized.value = false));
+
 // Tab Share: the sharer plays any Source here and shares this tab over the Call, and the other Viewer
 // watches it (`<WatchTabShareView>`). No Syncable Source plays meanwhile, so party sync does not run.
 const tabShare = useTabShare();
 const inTabShare = computed(() => party.value.mode === "tab-share");
-const sharingHere = computed(() => party.value.tabShare?.sharer === watchParty.state.value.viewer);
-const otherName = computed(() => {
-    const viewer = watchParty.state.value.viewer;
-    return viewer ? VIEWER_NAMES[otherViewer(viewer)] : "the other Viewer";
-});
+const sharingHere = computed(() => sharesTab(party.value, watchParty.state.value.viewer));
+const otherName = computed(() => otherViewerName(watchParty.state.value.viewer));
 const tabShareSources = [...SOURCES];
 const tabShareSourceId = useId();
-const tabShareSource = ref<SourceId>(initial.tabShare?.source ?? firstTabShareSource(initial));
-watch(() => party.value.tabShare?.source, (source) => {
-    if (source) tabShareSource.value = source;
-});
-watch(tabShareSource, (source) => {
-    tabShare.changeSource(source);
-});
+
+/**
+ * A control's value: it shows the Watch Party's (`shared()`, whenever that changes), and the
+ * Viewer's change of it is sent on with `send`. The device module ignores a value the Watch Party
+ * already has, so following the Watch Party sends nothing.
+ */
+function mirrored<T>(shared: () => T | null | undefined, initial: T, send: (value: T) => void): Ref<T> {
+    const value = ref(initial) as Ref<T>;
+    watch(shared, (now) => {
+        if (now !== null && now !== undefined) value.value = typeof now === "object" ? { ...now } : now;
+    });
+    watch(value, (now) => send(now), { deep: true });
+    return value;
+}
+
+const tabShareSource = mirrored<SourceId>(
+    () => party.value.tabShare?.source,
+    initial.tabShare?.source ?? firstTabShareSource(initial),
+    (source) => tabShare.changeSource(source),
+);
 
 const shell = useTemplateRef<{ iframe: HTMLIFrameElement | null }>("shell");
 const iframe = computed(() => shell.value?.iframe);
@@ -67,27 +84,14 @@ watch(() => tabShare.state.value, (now, before) => {
 });
 onBeforeUnmount(() => clearTimeout(tabShareProblemTimer));
 
-function tabShareProblemMessage(problem: MediaProblem) {
-    switch (problem) {
-        case "unsupported":
-            return "This browser can't share a tab. Use Chrome or Edge on a computer.";
-        case "blocked":
-            return "No tab was shared. To share, choose this tab in the browser's dialog.";
-        default:
-            return "Your tab couldn't be shared. Try again.";
-    }
-}
-
 const sourceName = computed(() => getSource(party.value.source).name);
 
 // The episode picker follows the Watch Party; choosing another episode there moves both Viewers to it.
-const chosen = reactive({ season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 });
-watch(() => party.value.episode, (episode) => {
-    if (episode) Object.assign(chosen, episode);
-});
-watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
-    watchParty.changeEpisode({ season, episode });
-});
+const chosenEpisode = mirrored<Episode>(
+    () => party.value.episode,
+    { season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 },
+    ({ season, episode }) => watchParty.changeEpisode({ season, episode }),
+);
 
 // Source fallback: once the Source fails on either device, both Viewers are offered the next Syncable
 // Source; once none is left, Tab Share. The Source picker switches both players at any time.
@@ -95,19 +99,45 @@ const failedNames = computed(() => party.value.failedSources.map((id) => getSour
 const offeredSource = computed(() => (party.value.fallback?.kind === "source" ? party.value.fallback.source : null));
 const sourceOptions = WATCH_PARTY_SOURCES.map((id) => getSource(id));
 const sourcePickerId = useId();
-const chosenSource = ref<SourceId>(initial.source);
-watch(() => party.value.source, (source) => {
-    chosenSource.value = source;
-});
-watch(chosenSource, (source) => {
+const chosenSource = mirrored<SourceId>(() => party.value.source, initial.source, (source) => {
     watchParty.switchSource(source);
+});
+
+/**
+ * Why the Watch Party waits for the other Viewer. One whose device went away is waited for from
+ * where they left (so this player went back there): they miss nothing while they are gone.
+ */
+const waitingNote = computed(() => {
+    const { phase } = party.value;
+    if (phase.name !== "waiting") return null;
+    const name = VIEWER_NAMES[phase.viewer];
+    return phase.reason === "disconnected"
+        ? `${name}'s connection dropped. You'll both go on from where ${name} left off, so ${name} misses nothing.`
+        : `${name}'s player fell behind. It plays on up to here, then you both go on together.`;
+});
+
+/** The mini-player's one line: what the Watch Party is doing, or waits for this Viewer to do in the player. */
+const miniStatus = computed(() => {
+    const { left, viewer } = watchParty.state.value;
+    const { countdown, waitingFor, nextEpisode } = view.value;
+    if (left) return `${VIEWER_NAMES[left.by]} left`;
+    if (alone.value) return "Watching alone";
+    if (inTabShare.value) return sharingHere.value ? "Sharing your tab" : `${otherName.value} shares a tab`;
+    if (countdown !== null) return `Starting in ${countdown}`;
+    if (party.value.fallback) return `${failedNames.value} couldn't play it`;
+    if (view.value.player === "failed") return `${sourceName.value} couldn't play it`;
+    if (view.value.clickToResume) return "Click to resume";
+    if (waitingFor) return waitingFor === viewer ? "Catching up…" : `Waiting for ${VIEWER_NAMES[waitingFor]}…`;
+    if (nextEpisode) return `Next episode in ${nextEpisode.secondsLeft}s`;
+    if (view.value.gettingReady) return "Getting ready…";
+    return null;
 });
 </script>
 
 <template>
-    <WatchPlayerShell ref="shell" :content-type="party.title.contentType" :tmdb-id="party.title.tmdbId"
-        :title="party.title.name" :season="party.episode?.season" :episode="party.episode?.episode"
-        :party-src="shellSrc" @close="close()">
+    <WatchPlayerFrame ref="shell" :content-type="party.title.contentType" :tmdb-id="party.title.tmdbId"
+        :title="party.title.name" :src="shellSrc" minimizable v-model:minimized="minimized" @close="close()">
+        <template v-if="miniStatus" #mini>{{ miniStatus }}</template>
         <div class="absolute inset-0 flex items-center justify-center" aria-live="polite">
             <div v-if="watchParty.state.value.left"
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4">
@@ -151,6 +181,7 @@ watch(chosenSource, (source) => {
             <div v-else-if="view.waitingFor"
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4">
                 <span class="text-xl">Waiting for {{ VIEWER_NAMES[view.waitingFor] }}…</span>
+                <span v-if="waitingNote" class="max-w-md text-center text-muted-color">{{ waitingNote }}</span>
                 <Button v-if="party.phase.name === 'inviting'" severity="secondary" @click="watchParty.cancel()">
                     Cancel
                 </Button>
@@ -172,7 +203,7 @@ watch(chosenSource, (source) => {
                 {{ describeChange(view.lastChange) }}
             </div>
             <div v-if="tabShareProblem" role="alert" class="rounded-lg bg-black/80 px-4 py-2 text-amber-300">
-                {{ tabShareProblemMessage(tabShareProblem) }}
+                {{ mediaProblemMessage("tab", tabShareProblem) }}
             </div>
         </div>
         <template #controls>
@@ -181,31 +212,28 @@ watch(chosenSource, (source) => {
                     Watching alone on {{ party.tabShare ? getSource(party.tabShare.source).name : sourceName }}
                 </span>
             </template>
-            <!-- Tab Share: the sharer picks the Source they share; either Viewer can stop it. -->
-            <template v-else-if="inTabShare">
-                <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season"
-                    v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
-                <template v-if="sharingHere">
+            <template v-else>
+                <WatchEpisodePicker v-if="party.episode" v-model:season="chosenEpisode.season"
+                    v-model:episode="chosenEpisode.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
+                <!-- Tab Share: the sharer picks the Source they share; either Viewer can stop it. -->
+                <template v-if="inTabShare && sharingHere">
                     <label :for="tabShareSourceId" class="px-1">Sharing</label>
                     <Select v-model="tabShareSource" :label-id="tabShareSourceId" aria-label="Source you share"
                         class="rounded p-2" :options="tabShareSources" option-value="id" option-label="name"
                         append-to="self">
                     </Select>
                 </template>
-                <span v-else-if="party.tabShare" class="px-1">
+                <span v-else-if="inTabShare && party.tabShare" class="px-1">
                     Watching {{ VIEWER_NAMES[party.tabShare.sharer] }}'s tab
                 </span>
-                <WatchTabShareButton></WatchTabShareButton>
-            </template>
-            <template v-else>
-                <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season"
-                    v-model:episode="chosen.episode" :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
-                <label :for="sourcePickerId" class="px-1">Watching together on</label>
-                <Select v-model="chosenSource" :label-id="sourcePickerId" aria-label="Source" class="rounded p-2"
-                    :options="sourceOptions" option-value="id" option-label="name" append-to="self">
-                </Select>
+                <template v-else-if="!inTabShare">
+                    <label :for="sourcePickerId" class="px-1">Watching together on</label>
+                    <Select v-model="chosenSource" :label-id="sourcePickerId" aria-label="Source" class="rounded p-2"
+                        :options="sourceOptions" option-value="id" option-label="name" append-to="self">
+                    </Select>
+                </template>
                 <WatchTabShareButton></WatchTabShareButton>
             </template>
         </template>
-    </WatchPlayerShell>
+    </WatchPlayerFrame>
 </template>

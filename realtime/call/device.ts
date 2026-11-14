@@ -13,6 +13,7 @@
 import { otherViewer, type Viewer } from "../../models/Viewer";
 import type { Clock } from "../clock";
 import type { DeviceClient } from "../deviceClient";
+import { createListeners } from "../listeners";
 import { emptySlots, openCallPeer, type CallPeer } from "./peer";
 import type { CallPlatform, MediaTrack, TabCapture } from "./platform";
 import { CALL_SLOTS, type CallLink, type CallMedia, type CallSlot } from "./protocol";
@@ -112,7 +113,7 @@ export interface DeviceCall {
 const RELINK_DELAY_MS = 2000;
 
 export function createDeviceCall(client: DeviceClient, platform: CallPlatform, clock: Clock): DeviceCall {
-  const listeners = new Set<() => void>();
+  const listeners = createListeners();
   let status: CallState["status"] = "out";
   let viewers: Record<Viewer, CallMedia | null> | null = null;
   let joinId: string | null = null;
@@ -131,7 +132,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
   let holding = false;
 
   function changed() {
-    for (const listener of listeners) listener();
+    listeners.notify();
   }
 
   /** Whether the microphone should be live: in push-to-talk, while the talk button is held. */
@@ -368,10 +369,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
     shareTab,
     stopSharingTab,
 
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: listeners.subscribe,
   };
 }
 

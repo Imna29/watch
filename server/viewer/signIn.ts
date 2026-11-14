@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { VIEWERS, isViewer, type Viewer } from "../../models/Viewer";
+import { VIEWER_NAMES, VIEWERS, isViewer, type Viewer } from "../../models/Viewer";
 import { createFailureThrottle, type ThrottlePolicy } from "./failureThrottle";
 import { parsePasswordHash, verifyPassword, type PasswordHash } from "./passwordHash";
 
@@ -30,6 +30,8 @@ export interface ViewerSignInOptions {
   env: Record<string, string | undefined>;
   /** Milliseconds since the epoch. Injected so tests can move time. */
   now?: () => number;
+  /** Where a configuration problem found while signing in is reported; `console.error` by default. */
+  logError?: (message: string) => void;
 }
 
 export interface SignInRequest {
@@ -44,13 +46,15 @@ export type SignInResult =
   /** `retryAfterSeconds` is how long the next attempt must wait (0: no wait). */
   | { outcome: "unknown-password"; retryAfterSeconds: number }
   /** Refused without checking the password. */
-  | { outcome: "too-many-attempts"; retryAfterSeconds: number };
+  | { outcome: "too-many-attempts"; retryAfterSeconds: number }
+  /** The password is both Viewers': the config cannot tell them apart, so nobody is signed in (it is logged). */
+  | { outcome: "misconfigured" };
 
 /**
  * Creates the Viewer sign-in for one server process. Throws, so the server
  * refuses to start, when the config cannot tell the two Viewers apart.
  */
-export function createViewerSignIn({ env, now = Date.now }: ViewerSignInOptions) {
+export function createViewerSignIn({ env, now = Date.now, logError = console.error }: ViewerSignInOptions) {
   const { cookieSecret, passwordHashes } = readConfig(env);
   // Derived from each Viewer's password hash, so a new hash for one Viewer
   // invalidates only that Viewer's cookies.
@@ -66,18 +70,13 @@ export function createViewerSignIn({ env, now = Date.now }: ViewerSignInOptions)
     return hmac("credential-version", Buffer.concat([hash.salt, hash.key])).slice(0, 16);
   }
 
-  async function identify(password: string): Promise<Viewer | null> {
+  /** The Viewer whose password this is; "both" when it is both Viewers'. */
+  async function identify(password: string): Promise<Viewer | "both" | null> {
     // Always check both hashes, so timing does not reveal which one matched.
     const matches = await Promise.all(
       passwordHashes.map(([, hash]) => verifyPassword(password, hash)),
     );
-    if (matches.every(Boolean)) {
-      // Separately hashed copies of one password have different salts, so
-      // only a sign-in with that password can notice.
-      throw new Error(
-        `${SAME_PASSWORD_PROBLEM} Hash a new password for one of them with \`bun run hash-password\`.`,
-      );
-    }
+    if (matches.every(Boolean)) return "both";
     return passwordHashes[matches.indexOf(true)]?.[0] ?? null;
   }
 
@@ -104,6 +103,15 @@ export function createViewerSignIn({ env, now = Date.now }: ViewerSignInOptions)
       perAddress.fail(addressKey);
       global.fail(GLOBAL);
       const viewer = await identify(password);
+      if (viewer === "both") {
+        // Separately hashed copies of one password have different salts, so
+        // only a sign-in with that password can notice.
+        const variables = VIEWERS.map(passwordHashVariable).join(" and ");
+        logError(
+          `Viewer sign-in is misconfigured: ${SAME_PASSWORD_PROBLEM} A password verified against both ${variables}, so nobody was signed in. Hash a new password for one of them with \`bun run hash-password --viewer <name>\`.`,
+        );
+        return { outcome: "misconfigured" };
+      }
       if (!viewer) {
         return { outcome: "unknown-password", retryAfterSeconds: retryAfterSeconds(addressKey) };
       }
@@ -143,6 +151,43 @@ export function createViewerSignIn({ env, now = Date.now }: ViewerSignInOptions)
 
 export function passwordHashVariable(viewer: Viewer) {
   return `VIEWER_PASSWORD_HASH_${viewer.toUpperCase()}`;
+}
+
+export interface NewPasswordCheck {
+  /** The Viewer the new password is for; null when the operator did not say. */
+  viewer: Viewer | null;
+  /** Server config, usually `process.env`: the Viewers' password hashes in it are checked. */
+  env: Record<string, string | undefined>;
+  /** The other Viewer's password hash, given on the command line (`--other-hash`). */
+  otherHash?: string;
+}
+
+/**
+ * Why `password` must not become `viewer`'s password, for `bun run
+ * hash-password`: it is already the other Viewer's, by their hash in the
+ * config or on the command line, so a password could not tell the two
+ * apart. Null when no hash at hand says so. The server cannot tell from the
+ * hashes alone (each has its own salt): only a password can.
+ */
+export async function samePasswordProblem(
+  password: string,
+  { viewer, env, otherHash }: NewPasswordCheck,
+): Promise<string | null> {
+  if (otherHash !== undefined) {
+    const hash = parsePasswordHash(otherHash);
+    if (!hash) return "--other-hash is not a password hash printed by `bun run hash-password`.";
+    if (await verifyPassword(password, hash)) {
+      return "That password is already the other Viewer's. Each Viewer needs their own password.";
+    }
+  }
+  for (const owner of VIEWERS) {
+    if (owner === viewer) continue;
+    const hash = parsePasswordHash(env[passwordHashVariable(owner)]?.trim() ?? "");
+    if (!hash || !(await verifyPassword(password, hash))) continue;
+    const again = viewer === null ? ` Hashing ${VIEWER_NAMES[owner]}'s own password again? Add \`--viewer ${owner}\`.` : "";
+    return `That password is already ${VIEWER_NAMES[owner]}'s (${passwordHashVariable(owner)}). Each Viewer needs their own password.${again}`;
+  }
+  return null;
 }
 
 const COOKIE_SECRET_VARIABLE = "VIEWER_COOKIE_SECRET";

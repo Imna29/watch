@@ -1,6 +1,6 @@
 /**
  * The coordinator: the server's single authority over realtime state
- * (presence now; the Watch Party and Call routing later). Framework-free and
+ * (presence, the Watch Party, and relaying the Call's setup). Framework-free and
  * transport-agnostic: the WebSocket handler (`server/routes/realtime.ts`), or
  * a test's fake network, feeds it devices connecting and disconnecting,
  * messages from devices and clock ticks, and carries out what it returns. It
@@ -45,6 +45,30 @@ export interface MessageHandler<T extends DeviceMessageType> {
 }
 
 export type MessageHandlers = { [T in DeviceMessageType]?: MessageHandler<T> };
+
+/**
+ * `handlers`, except that a message of a type that `guarded` holds for is
+ * handled only when `allow(from)`, and ignored otherwise. Other types are
+ * handled as they were.
+ */
+export function guardHandlers(
+  handlers: MessageHandlers,
+  guarded: (type: DeviceMessageType) => boolean,
+  allow: (from: Device) => boolean,
+): MessageHandlers {
+  const result: Record<string, MessageHandler<DeviceMessageType>> = {};
+  for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
+    result[type] = !guarded(type)
+      ? handler
+      : {
+          schema: handler.schema,
+          handle(from, message) {
+            if (allow(from)) handler.handle(from, message);
+          },
+        };
+  }
+  return result as MessageHandlers;
+}
 
 /**
  * One feature of the realtime system, such as presence. It owns the device
