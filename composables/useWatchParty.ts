@@ -75,7 +75,8 @@ export function useWatchParty() {
 /**
  * Party sync (`realtime/watchParty/partySync.ts`) for the Watch Party player
  * whose Source iframe is `iframe`. Render the iframe with `src`; `view` is
- * what to show over it. Stops when the calling component unmounts.
+ * what to show over it; `resume` is the "Click to resume" button's click.
+ * Stops when the calling component unmounts.
  */
 export function usePartySync(iframe: Readonly<Ref<HTMLIFrameElement | null | undefined>>) {
   const { client, watchParty } = useRealtime();
@@ -113,5 +114,5 @@ export function usePartySync(iframe: Readonly<Ref<HTMLIFrameElement | null | und
   });
   onScopeDispose(() => sync.destroy());
 
-  return { src: readonly(src), view: shallowReadonly(view) };
+  return { src: readonly(src), view: shallowReadonly(view), resume: () => sync.resume() };
 }

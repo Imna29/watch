@@ -26,7 +26,7 @@ function close() {
 
 const shell = useTemplateRef<{ iframe: HTMLIFrameElement | null }>("shell");
 const iframe = computed(() => shell.value?.iframe);
-const { src, view } = usePartySync(iframe);
+const { src, view, resume } = usePartySync(iframe);
 
 const sourceName = computed(() => getSource(party.value.source).name);
 
@@ -80,10 +80,19 @@ watch(chosenSource, (source) => {
                 class="pointer-events-auto rounded-lg bg-black/80 px-6 py-4 text-center">
                 {{ sourceName }} couldn't play this Title.
             </div>
+            <!-- The browser would not start the player (after a reload): the click lets it. -->
+            <Button v-else-if="view.clickToResume" class="pointer-events-auto" size="large" @click="resume()">
+                Click to resume
+            </Button>
+            <!-- The Watch Party waits for this Viewer: their player plays on up to where the other waits. -->
+            <div v-else-if="view.waitingFor && view.waitingFor === watchParty.state.value.viewer"
+                class="rounded-lg bg-black/60 px-4 py-2">Catching up…</div>
             <div v-else-if="view.waitingFor"
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4">
                 <span class="text-xl">Waiting for {{ VIEWER_NAMES[view.waitingFor] }}…</span>
-                <Button severity="secondary" @click="watchParty.cancel()">Cancel</Button>
+                <Button v-if="party.phase.name === 'inviting'" severity="secondary" @click="watchParty.cancel()">
+                    Cancel
+                </Button>
             </div>
             <div v-else-if="view.gettingReady" class="rounded-lg bg-black/80 px-6 py-4 text-xl">Getting ready…</div>
             <div v-else-if="view.player === 'loading'" class="text-center">Loading {{ sourceName }}…</div>
