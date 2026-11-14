@@ -2,7 +2,7 @@
 /**
  * The Call's controls on this device: mute, camera and leave. In push-to-talk
  * the mute button gives way to the talk button (`<WatchCallPushToTalk>`).
- * Tab Share (#15) adds its button here.
+ * In a Watch Party, Tab Share's button too (`<WatchTabShareButton>`).
  */
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "@lucide/vue";
 
@@ -10,7 +10,7 @@ const { state, leave, setMic, setCamera } = useCall();
 </script>
 
 <template>
-    <div class="flex items-center gap-1">
+    <div class="flex flex-wrap items-center justify-end gap-1">
         <Button v-if="!state.pushToTalk.on" class="rounded-full p-2" :severity="state.mic.on ? 'secondary' : 'contrast'"
             :aria-label="state.mic.on ? 'Mute' : 'Unmute'" :aria-pressed="!state.mic.on"
             :title="state.mic.on ? 'Mute' : 'Unmute'" @click="setMic(!state.mic.on)">
@@ -23,6 +23,7 @@ const { state, leave, setMic, setCamera } = useCall();
             <Video v-if="state.camera.on" :size="18" />
             <VideoOff v-else :size="18" />
         </Button>
+        <WatchTabShareButton compact></WatchTabShareButton>
         <Button class="rounded-full p-2" severity="danger" aria-label="Leave call" title="Leave call" @click="leave()">
             <PhoneOff :size="18" />
         </Button>

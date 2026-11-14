@@ -4,6 +4,7 @@
  */
 import type { CallPlatform, MediaTrack } from "./platform";
 import { CALL_ICE_SERVERS_PATH, type IceServersResponse } from "./protocol";
+import { captureBrowserTab } from "./tabCapture";
 
 /** Asks for one track. Without `navigator.mediaDevices` (not HTTPS) it rejects with `NotSupportedError`. */
 async function openTrack(constraints: MediaStreamConstraints): Promise<MediaTrack> {
@@ -28,6 +29,8 @@ export const browserCallPlatform: CallPlatform = {
       audio: false,
       video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24 } },
     }),
+
+  captureTab: captureBrowserTab,
 
   async getIceServers() {
     const response = await fetch(CALL_ICE_SERVERS_PATH, { credentials: "same-origin" });

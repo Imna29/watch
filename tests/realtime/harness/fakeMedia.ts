@@ -24,6 +24,7 @@ import type {
   PeerConnectionEvents,
   PeerTransceiver,
   SessionDescription,
+  TabCapture,
 } from "../../../realtime/call/platform";
 import type { IceServer } from "../../../realtime/call/protocol";
 
@@ -70,12 +71,22 @@ export interface FakeCallPlatform extends CallPlatform {
   microphone: MediaAccess;
   /** What asking for the camera does from now on. */
   camera: MediaAccess;
+  /**
+   * What asking to share a tab does from now on: "allow" (the Viewer picks
+   * this tab), or the error the browser throws ("NotAllowedError" when the
+   * Viewer cancels the picker, "NotSupportedError" where it cannot share a tab).
+   */
+  tabCapture: MediaAccess;
+  /** Whether the browser shares the tab's sound along with its picture. */
+  tabSound: boolean;
   /** How long the browser's permission prompt stays open before the Viewer answers it. */
   promptMs: number;
   /** Every peer connection this device created, oldest first. */
   readonly peerConnections: readonly FakePeerConnection[];
-  /** Every microphone and camera track this device was given, oldest first. */
+  /** Every microphone, camera and shared tab track this device was given, oldest first. */
   readonly tracks: readonly FakeTrack[];
+  /** The Viewer presses the browser's own "Stop sharing" for the tab this device shares. */
+  stopSharingFromBrowser(): void;
 }
 
 export interface FakeMediaWorld {
@@ -91,28 +102,65 @@ export function createFakeMediaWorld(): FakeMediaWorld {
       const peerConnections: FakePeerConnection[] = [];
       const tracks: FakeTrack[] = [];
       let count = 0;
+      /** The browser's "Stop sharing" of each tab capture still going. */
+      const captureEnders = new Set<() => void>();
 
-      function open(kind: "audio" | "video", access: MediaAccess, what: string) {
-        return new Promise<MediaTrack>((resolve, reject) => {
+      function ask<T>(access: MediaAccess, what: string, grant: () => T) {
+        return new Promise<T>((resolve, reject) => {
           function answer() {
             if (access !== "allow") return reject(Object.assign(new Error(`${what}: ${access}`), { name: access }));
-            const track = new FakeTrack(kind, `${deviceName} ${what}`);
-            tracks.push(track);
-            resolve(track);
+            resolve(grant());
           }
           if (platform.promptMs > 0) clock.setTimeout(answer, platform.promptMs);
           else answer();
         });
       }
 
+      function newTrack(kind: "audio" | "video", what: string) {
+        const track = new FakeTrack(kind, `${deviceName} ${what}`);
+        tracks.push(track);
+        return track;
+      }
+
+      function open(kind: "audio" | "video", access: MediaAccess, what: string): Promise<MediaTrack> {
+        return ask(access, what, () => newTrack(kind, what));
+      }
+
+      /**
+       * Like a browser: the capture is over once the site stops its picture
+       * (silently), or when the Viewer stops it from the browser ("ended").
+       */
+      function captureTab(): Promise<TabCapture> {
+        return ask(platform.tabCapture, "tab", () => {
+          const video = newTrack("video", "tab");
+          const audio = platform.tabSound ? newTrack("audio", "tab sound") : null;
+          const listeners: (() => void)[] = [];
+          const end = () => {
+            captureEnders.delete(end);
+            if (video.stopped) return;
+            video.stop();
+            audio?.stop();
+            for (const listener of listeners.splice(0)) clock.setTimeout(listener, 0);
+          };
+          captureEnders.add(end);
+          return { video, audio, onEnded: (listener) => void listeners.push(listener) };
+        });
+      }
+
       const platform: FakeCallPlatform = {
         microphone: "allow",
         camera: "allow",
+        tabCapture: "allow",
+        tabSound: true,
         promptMs: 0,
         peerConnections,
         tracks,
+        stopSharingFromBrowser() {
+          for (const end of [...captureEnders]) end();
+        },
         getMicrophone: () => open("audio", platform.microphone, "microphone"),
         getCamera: () => open("video", platform.camera, "camera"),
+        captureTab,
         getIceServers: () => Promise.resolve(FAKE_ICE_SERVERS),
         createPeerConnection(config, events) {
           const connection = new FakePeerConnection(`${deviceName}-pc${++count}`, config, events, clock, connections);

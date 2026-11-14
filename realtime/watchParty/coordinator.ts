@@ -36,6 +36,14 @@ import {
   switchSourceSchema,
 } from "./sourceFallback";
 import { WATCH_PARTY_SOURCES } from "./sources";
+import {
+  afterTabShareStarted,
+  canShareTab,
+  exceptInTabShare,
+  noTabShare,
+  stopTabShareSchema,
+  tabShareSchema,
+} from "./tabShare";
 
 /** The 3-2-1 before both players start. */
 export const COUNTDOWN_MS = 3000;
@@ -230,7 +238,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         }
       },
 
-      handlers: onlyFromActiveDevices({
+      handlers: onlyFromActiveDevices(exceptInTabShare(() => party, {
         "watchParty:start": {
           schema: startSchema satisfies z.ZodType<StartWatchPartyMessage>,
           handle(from, { title, episode, replacing }) {
@@ -256,7 +264,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               episode,
               source: sources[0]!,
               ...noFailedSources(),
-              mode: "syncable-source",
+              ...noTabShare(),
               phase: { name: "inviting" },
               anchor: { position: 0, serverTime: now, playing: false, rate: 1 },
               lastChangeBy: from.viewer,
@@ -385,7 +393,36 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             });
           },
         },
-      }),
+
+        // Tab Share (`./tabShare.ts`): the Viewer shares their tab over the Call, or plays another Source in it.
+        "watchParty:tabShare": {
+          schema: tabShareSchema,
+          handle(from, { partyId, source, sound }) {
+            if (party?.id !== partyId || !canShareTab(party, from.viewer)) return;
+            publish({
+              ...party,
+              ...afterTabShareStarted(party, { sharer: from.viewer, source, sound }, context.now()),
+              lastChangeBy: from.viewer,
+            });
+          },
+        },
+
+        // Either Viewer stops the Tab Share: both players load the Syncable Source again, and report when they have.
+        "watchParty:stopTabShare": {
+          schema: stopTabShareSchema,
+          handle(from, { partyId }) {
+            if (party?.id !== partyId || party.mode !== "tab-share") return;
+            readyDevices = new Set();
+            publish({
+              ...party,
+              ...noTabShare(),
+              lastChangeBy: from.viewer,
+              // The seq `publish` gives this state.
+              lastChange: { kind: "tab-share-stopped", by: from.viewer, seq: seq + 1 },
+            });
+          },
+        },
+      })),
     };
   };
 }

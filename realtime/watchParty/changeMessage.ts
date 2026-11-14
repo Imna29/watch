@@ -22,6 +22,8 @@ export function describeChange(change: WatchPartyChange): string {
       return `${who} switched to S${change.episode.season}E${change.episode.episode}`;
     case "next-cancelled":
       return `${who} cancelled the next episode`;
+    case "tab-share-stopped":
+      return `${who} stopped the Tab Share`;
     case "source":
       return `${who} switched to ${getSource(change.source).name}`;
   }

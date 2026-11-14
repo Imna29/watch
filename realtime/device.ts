@@ -9,19 +9,24 @@ import type { CallPlatform } from "./call/platform";
 import { createDeviceClient, type DeviceClientOptions } from "./deviceClient";
 import { createDevicePresence } from "./presence/device";
 import { createDeviceWatchParty } from "./watchParty/device";
+import { createDeviceTabShare } from "./watchParty/tabShareDevice";
 
 export interface RealtimeDeviceOptions extends DeviceClientOptions {
   /** The browser's media and WebRTC, for the Call. */
   call: CallPlatform;
 }
 
-export function createRealtimeDevice({ call, ...options }: RealtimeDeviceOptions) {
+export function createRealtimeDevice({ call: platform, ...options }: RealtimeDeviceOptions) {
   const client = createDeviceClient(options);
+  const watchParty = createDeviceWatchParty(client);
+  const call = createDeviceCall(client, platform, options.clock);
   return {
     client,
     presence: createDevicePresence(client),
-    watchParty: createDeviceWatchParty(client),
-    call: createDeviceCall(client, call, options.clock),
+    watchParty,
+    call,
+    /** Tab Share: the Watch Party shared over the Call. */
+    tabShare: createDeviceTabShare({ client, watchParty, call, clock: options.clock }),
   };
 }
 

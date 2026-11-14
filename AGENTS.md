@@ -116,6 +116,18 @@ Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
 Party ends ("left") and the other device keeps its player open
 (`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
 Party sync stays bound to the Watch Party it opened for.
+Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
+`watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
+sharer, Source, sound). It stands still, paused, and the coordinator ignores
+intents about Syncable Source players (`exceptInTabShare`); the Watch Party
+player runs no party sync meanwhile (`usePartySync(iframe, enabled)`, and the
+harness likewise). The tab travels in the Call's `tabVideo`/`tabAudio` slots:
+`call.shareTab()` asks the browser first (from the click), then joins the
+Call. The device module keeps both sides in agreement: once the sharer's
+device no longer shares in the Call (the browser's "Stop sharing", leaving or
+moving the Call, takeover) it sends `watchParty:stopTabShare`, and once the
+Tab Share is over (either Viewer stopped it, another episode, the Watch Party
+ended) it releases the tab. Echo: see `realtime/call/tabCapture.ts`.
 The coordinator records History through the `HistoryPort` that
 `server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
 once per Syncable Source with an adapter: a new one needs a fake player that
