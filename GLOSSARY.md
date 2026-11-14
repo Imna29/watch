@@ -8,6 +8,10 @@ A private site where Giorgi and Mariam find movies and TV shows and watch them, 
 Giorgi or Mariam, the only two people who can use the site. Each signs in with their own password.
 _Avoid_: User, member, account
 
+**Device**:
+One browser tab where a Viewer has the site open, holding one realtime connection. A Viewer can have several at once.
+_Avoid_: Client, session, connection
+
 ## Watching
 
 **Title**:

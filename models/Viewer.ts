@@ -11,3 +11,8 @@ export const VIEWER_NAMES: Record<Viewer, string> = {
 export function isViewer(value: unknown): value is Viewer {
   return (VIEWERS as readonly unknown[]).includes(value);
 }
+
+/** Giorgi for Mariam, Mariam for Giorgi. */
+export function otherViewer(viewer: Viewer): Viewer {
+  return viewer === "giorgi" ? "mariam" : "giorgi";
+}

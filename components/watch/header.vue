@@ -114,6 +114,8 @@ const isDrawerOpen = ref(false);
             </InputGroup>
         </div>
 
+        <WatchPresence class="ml-3 md:ml-5 max-w-64 shrink-0"></WatchPresence>
+
         <div class="md:flex hidden items-center md:ml-5 ml-2">
             <Avatar icon="pi pi-user" class="cursor-pointer" size="normal" shape="square"
                 @click="(event: Event) => popOverProfile.toggle(event)"></Avatar>

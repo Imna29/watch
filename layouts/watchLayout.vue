@@ -1,5 +1,7 @@
 <script setup lang="ts">
 const watchStore = useWatchStore();
+// Every signed-in page uses this layout: hold the realtime connection from here.
+useRealtime();
 
 
 </script>
