@@ -79,6 +79,30 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
     return { h, giorgi, mariam };
   }
 
+  describe("the players' positions", () => {
+    it("are compared on the server's clock, however far each device's own clock is off", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi", { clockSkewMs: -3 * SECOND, delayMs: 80 });
+      const mariam = h.device("mariam", { clockSkewMs: 4 * SECOND, delayMs: 30 });
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(SECOND);
+      mariam.watchParty.join();
+      h.advance(MINUTE);
+
+      mariam.player!.stall(SECOND);
+      const seen = track(h, 2 * MINUTE, {
+        giorgiPosition: () => giorgi.player!.position,
+        mariamPosition: () => mariam.player!.position,
+        waitingFor: () => giorgi.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.waitingFor)).toEqual([null]);
+      expect(biggestJump(seen.giorgiPosition)).toBeLessThan(0.5);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
+  });
+
   describe("a small drift", () => {
     it("is corrected quietly: the Viewer who fell behind moves forward, and nobody is paused", () => {
       const { h, giorgi, mariam } = watchingTogether();
