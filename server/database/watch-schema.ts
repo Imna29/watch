@@ -7,10 +7,15 @@ import {
   pgEnum,
   unique,
   index,
+  check,
 } from "drizzle-orm/pg-core";
-import { user } from "./auth-schema";
+import { sql } from "drizzle-orm";
+import { VIEWERS } from "../../models/Viewer";
 
 // Enums
+// Lists belong to a Viewer (ADR 0001): there are no accounts.
+export const viewerEnum = pgEnum("viewer", VIEWERS);
+
 export const watchPlaylistItemTypeEnum = pgEnum(
   "watch_playlist_item_type",
   ["MOVIE", "TV_SHOW"]
@@ -28,9 +33,7 @@ export const watchPlaylists = pgTable(
   "watch_playlists",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    viewer: viewerEnum("viewer").notNull(),
     name: text("name").notNull(),
     type: watchPlaylistTypeEnum("type").notNull(),
     createdAt: timestamp("created_at", { mode: "date" })
@@ -38,7 +41,7 @@ export const watchPlaylists = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull(),
   },
-  (table) => [index("watch_playlists_user_id_idx").on(table.userId)]
+  (table) => [index("watch_playlists_viewer_idx").on(table.viewer)]
 );
 
 // Watch Playlist Items table
@@ -71,9 +74,7 @@ export const watchedEpisodes = pgTable(
   "watched_episodes",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+    viewer: viewerEnum("viewer").notNull(),
     seasonNum: integer("season_num").notNull(),
     episodeNum: integer("episode_num").notNull(),
     tvShowId: integer("tv_show_id").notNull(),
@@ -81,14 +82,44 @@ export const watchedEpisodes = pgTable(
   },
   (table) => [
     unique("watched_episodes_unique_idx").on(
-      table.userId,
+      table.viewer,
       table.tvShowId,
       table.seasonNum,
       table.episodeNum
     ),
-    index("watched_episodes_user_tvshow_idx").on(
-      table.userId,
+    index("watched_episodes_viewer_tvshow_idx").on(
+      table.viewer,
       table.tvShowId
+    ),
+  ]
+);
+
+// Analyses table (GLOSSARY.md, "Understanding"): at most one per movie. Only
+// Giorgi writes them (`ANALYSIS_WRITER`), so there is no writer column.
+export const analyses = pgTable(
+  "analyses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The movie's TMDB id.
+    movieId: integer("movie_id").notNull(),
+    text: text("text").notNull(),
+    submittedAt: timestamp("submitted_at", { mode: "date" }).notNull(),
+    editedAt: timestamp("edited_at", { mode: "date" }).notNull(),
+    // Mariam's Grade, its remark and when she gave it; null until graded.
+    grade: integer("grade"),
+    remark: text("remark"),
+    gradedAt: timestamp("graded_at", { mode: "date" }),
+  },
+  (table) => [
+    unique("analyses_movie_id_unique_idx").on(table.movieId),
+    check("analyses_grade_range", sql`${table.grade} between -1 and 10`),
+    check(
+      "analyses_grade_with_graded_at",
+      sql`(${table.grade} is null) = (${table.gradedAt} is null)`
+    ),
+    check(
+      "analyses_remark_needs_grade",
+      sql`${table.remark} is null or ${table.grade} is not null`
     ),
   ]
 );

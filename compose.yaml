@@ -1,0 +1,115 @@
+# The self-hosted site (ADR 0003): the app, Postgres, Caddy for HTTPS and
+# coturn as the Call's relay. Settings come from .env next to this file (see
+# .env.example); AGENTS.md ("Self-hosting") says what the VPS needs.
+#   Start: docker compose up -d --build --wait
+#   Stop:  docker compose down      (add -v to wipe the database and Caddy's certificates)
+# Local development uses compose.dev.yaml (Postgres only) instead.
+name: watch
+
+# The app's database settings, shared by the app and the `migrate` step.
+x-database: &database
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USER: ${DB_USER:-watch}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+  DB_NAME: ${DB_NAME:-watch}
+  DB_CA: ""
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-watch}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ${DB_NAME:-watch}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # One-shot, on the app's image: applies the database migrations
+  # (scripts/migrate.ts), then exits. The app starts only once it has succeeded.
+  migrate:
+    build: .
+    command: ["bun", "migrate.mjs"]
+    environment:
+      <<: *database
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      <<: *database
+      TMDB_API_KEY: ${TMDB_API_KEY:?Set TMDB_API_KEY in .env}
+      VIEWER_PASSWORD_HASH_GIORGI: ${VIEWER_PASSWORD_HASH_GIORGI:?Set VIEWER_PASSWORD_HASH_GIORGI in .env}
+      VIEWER_PASSWORD_HASH_MARIAM: ${VIEWER_PASSWORD_HASH_MARIAM:?Set VIEWER_PASSWORD_HASH_MARIAM in .env}
+      VIEWER_COOKIE_SECRET: ${VIEWER_COOKIE_SECRET:?Set VIEWER_COOKIE_SECRET in .env}
+      # Where browsers reach coturn: this stack's own host, unless .env says otherwise.
+      TURN_HOST: ${TURN_HOST:-${DOMAIN}:${TURN_PORT:-3478}}
+      TURN_SECRET: ${TURN_SECRET:?Set TURN_SECRET in .env}
+    # No published port: only Caddy reaches the app. The sign-in throttle trusts
+    # X-Forwarded-For, which only Caddy may set.
+    expose:
+      - "3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - 'fetch("http://127.0.0.1:3000/robots.txt").then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))'
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
+
+  caddy:
+    image: caddy:2.11
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+  coturn:
+    image: coturn/coturn:4.19-alpine
+    restart: unless-stopped
+    environment:
+      TURN_SECRET: ${TURN_SECRET:?Set TURN_SECRET in .env}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:-}
+      TURN_RELAY_MIN_PORT: ${TURN_RELAY_MIN_PORT:-49160}
+      TURN_RELAY_MAX_PORT: ${TURN_RELAY_MAX_PORT:-49200}
+    # The relay ports are published 1:1: coturn tells browsers the port it
+    # opened, at the public address.
+    ports:
+      - "${TURN_PORT:-3478}:3478/udp"
+      - "${TURN_PORT:-3478}:3478/tcp"
+      - "${TURN_RELAY_MIN_PORT:-49160}-${TURN_RELAY_MAX_PORT:-49200}:${TURN_RELAY_MIN_PORT:-49160}-${TURN_RELAY_MAX_PORT:-49200}/udp"
+    volumes:
+      - ./deploy/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./deploy/coturn.sh:/coturn.sh:ro
+    entrypoint: ["sh", "/coturn.sh"]
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

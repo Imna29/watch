@@ -1,0 +1,25 @@
+# Local-development Postgres only. Credentials match .env.example.
+#   Start: docker compose -f compose.dev.yaml up -d --wait
+#   Stop:  docker compose -f compose.dev.yaml down      (add -v to wipe the data)
+name: watch-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: watch
+      POSTGRES_PASSWORD: watch
+      POSTGRES_DB: watch
+    ports:
+      # Localhost only. DB_PORT (from the shell or .env) picks the host port.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watch -d watch"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  postgres-data:

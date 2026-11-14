@@ -7,13 +7,16 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
+    "start": "bun .output/server/index.mjs",
     "postinstall": "nuxt prepare",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "hash-password": "bun scripts/hash-password.ts",
     "test": "vitest run",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "typecheck:server": "tsc -p .nuxt/tsconfig.server.json --noEmit"
   },
   "dependencies": {
     "@lucide/vue": "^1.72.0",
@@ -24,9 +27,7 @@
     "@tanstack/vue-query": "^5.107.1",
     "@vee-validate/nuxt": "^4.15.1",
     "@vee-validate/zod": "^4.15.1",
-    "@vercel/analytics": "^2.0.1",
     "@vueuse/core": "^15.0.0",
-    "better-auth": "^1.7.20",
     "defu": "^6.1.7",
     "drizzle-orm": "1.0.0-rc.5",
     "nuxt": "^4.6.4",

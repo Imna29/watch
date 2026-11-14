@@ -1,0 +1,636 @@
+{
+  "type": "base",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "285994eb-d64f-4835-9aac-9c9627ff78e0",
+  "prevIds": [
+    "00000000-0000-0000-0000-000000000000"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "viewer"
+      ],
+      "writes": [
+        "s|enum|public.viewer",
+        "n|enum|public.viewer",
+        "e|enum|public.viewer",
+        "n|type|public.viewer"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "watch_playlist_item_type"
+      ],
+      "writes": [
+        "s|enum|public.watch_playlist_item_type",
+        "n|enum|public.watch_playlist_item_type",
+        "e|enum|public.watch_playlist_item_type",
+        "n|type|public.watch_playlist_item_type"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "watch_playlist_type"
+      ],
+      "writes": [
+        "s|enum|public.watch_playlist_type",
+        "n|enum|public.watch_playlist_type",
+        "e|enum|public.watch_playlist_type",
+        "n|type|public.watch_playlist_type"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "watch_playlist_items"
+      ],
+      "writes": [
+        "s|tbl|public.watch_playlist_items",
+        "n|tbl|public.watch_playlist_items",
+        "e|tbl|public.watch_playlist_items",
+        "n|rel|public.watch_playlist_items",
+        "n|type|public.watch_playlist_items",
+        "n|rel|public.watch_playlist_items_pkey",
+        "n|rel|public.watch_playlist_items_unique_idx"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.watch_playlist_item_type"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "watch_playlists"
+      ],
+      "writes": [
+        "s|tbl|public.watch_playlists",
+        "n|tbl|public.watch_playlists",
+        "e|tbl|public.watch_playlists",
+        "n|rel|public.watch_playlists",
+        "n|type|public.watch_playlists",
+        "n|rel|public.watch_playlists_pkey"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.viewer",
+        "n|enum|public.watch_playlist_type"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "watched_episodes"
+      ],
+      "writes": [
+        "s|tbl|public.watched_episodes",
+        "n|tbl|public.watched_episodes",
+        "e|tbl|public.watched_episodes",
+        "n|rel|public.watched_episodes",
+        "n|type|public.watched_episodes",
+        "n|rel|public.watched_episodes_pkey",
+        "n|rel|public.watched_episodes_unique_idx"
+      ],
+      "reads": [
+        "n|sch|public",
+        "n|enum|public.viewer"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "watch_playlist_items",
+        "watch_playlist_items_playlist_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.watch_playlist_items_playlist_id_idx",
+        "n|idx|public.watch_playlist_items_playlist_id_idx",
+        "e|idx|public.watch_playlist_items_playlist_id_idx",
+        "n|rel|public.watch_playlist_items_playlist_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.watch_playlist_items",
+        "n|sch|public",
+        "n|col|public.watch_playlist_items.playlist_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "watch_playlists",
+        "watch_playlists_viewer_idx"
+      ],
+      "writes": [
+        "s|idx|public.watch_playlists_viewer_idx",
+        "n|idx|public.watch_playlists_viewer_idx",
+        "e|idx|public.watch_playlists_viewer_idx",
+        "n|rel|public.watch_playlists_viewer_idx"
+      ],
+      "reads": [
+        "n|tbl|public.watch_playlists",
+        "n|sch|public",
+        "n|col|public.watch_playlists.viewer"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "watched_episodes",
+        "watched_episodes_viewer_tvshow_idx"
+      ],
+      "writes": [
+        "s|idx|public.watched_episodes_viewer_tvshow_idx",
+        "n|idx|public.watched_episodes_viewer_tvshow_idx",
+        "e|idx|public.watched_episodes_viewer_tvshow_idx",
+        "n|rel|public.watched_episodes_viewer_tvshow_idx"
+      ],
+      "reads": [
+        "n|tbl|public.watched_episodes",
+        "n|sch|public",
+        "n|col|public.watched_episodes.viewer",
+        "n|col|public.watched_episodes.tv_show_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "watch_playlist_items"
+      ],
+      "writes": [
+        "s|fk|public.watch_playlist_items.watch_playlist_items_playlist_id_watch_playlists_id_fkey",
+        "n|fk|public.watch_playlist_items.watch_playlist_items_playlist_id_watch_playlists_id_fkey",
+        "e|fk|public.watch_playlist_items.watch_playlist_items_playlist_id_watch_playlists_id_fkey",
+        "n|con|public.watch_playlist_items.watch_playlist_items_playlist_id_watch_playlists_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.watch_playlist_items",
+        "n|sch|public",
+        "n|tbl|public.watch_playlists",
+        "n|sch|public",
+        "n|col|public.watch_playlist_items.playlist_id",
+        "n|col|public.watch_playlists.id",
+        "e|uniqueness|public.watch_playlists.id"
+      ]
+    }
+  ],
+  "ddl": [
+    {
+      "schema": "public",
+      "name": "watch_playlist_items",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "watch_playlists",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "watched_episodes",
+      "isRlsEnabled": false,
+      "entityType": "tables"
+    },
+    {
+      "schema": "public",
+      "name": "viewer",
+      "values": [
+        "giorgi",
+        "mariam"
+      ],
+      "entityType": "enums"
+    },
+    {
+      "schema": "public",
+      "name": "watch_playlist_item_type",
+      "values": [
+        "MOVIE",
+        "TV_SHOW"
+      ],
+      "entityType": "enums"
+    },
+    {
+      "schema": "public",
+      "name": "watch_playlist_type",
+      "values": [
+        "HISTORY",
+        "WATCH_LATER",
+        "FAVORITES",
+        "CUSTOM"
+      ],
+      "entityType": "enums"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "id",
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "playlist_id",
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "content_type",
+      "type": "watch_playlist_item_type",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "content_id",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "watched_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "id",
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "viewer",
+      "type": "viewer",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "name",
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "type",
+      "type": "watch_playlist_type",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "created_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "updated_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "id",
+      "type": "uuid",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "gen_random_uuid()",
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "viewer",
+      "type": "viewer",
+      "typeSchema": "public",
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "season_num",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "episode_num",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "tv_show_id",
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "watched_at",
+      "type": "timestamp",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "entityType": "columns"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "watch_playlist_items_playlist_id_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "playlist_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "watch_playlists_viewer_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "viewer",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "watched_episodes_viewer_tvshow_idx",
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "viewer",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "tv_show_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "entityType": "indexes"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "watch_playlist_items_playlist_id_watch_playlists_id_fkey",
+      "nameExplicit": false,
+      "columns": [
+        "playlist_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "watch_playlists",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "entityType": "fks"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "watch_playlist_items_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlists",
+      "name": "watch_playlists_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "watched_episodes_pkey",
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "entityType": "pks"
+    },
+    {
+      "schema": "public",
+      "table": "watch_playlist_items",
+      "name": "watch_playlist_items_unique_idx",
+      "nameExplicit": true,
+      "columns": [
+        "playlist_id",
+        "content_type",
+        "content_id"
+      ],
+      "nullsNotDistinct": false,
+      "entityType": "uniques"
+    },
+    {
+      "schema": "public",
+      "table": "watched_episodes",
+      "name": "watched_episodes_unique_idx",
+      "nameExplicit": true,
+      "columns": [
+        "viewer",
+        "tv_show_id",
+        "season_num",
+        "episode_num"
+      ],
+      "nullsNotDistinct": false,
+      "entityType": "uniques"
+    }
+  ]
+}

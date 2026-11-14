@@ -2,13 +2,16 @@
 
 ## What this is
 A Nuxt 4 single-page app (`ssr: false`) for browsing movies and TV shows via
-TMDB, with email/password accounts, playlists and watched-episode tracking.
+TMDB, private to two Viewers (Giorgi and Mariam, see `GLOSSARY.md`), with
+per-Viewer playlists and watched-episode tracking.
 
 ## Stack
 - Nuxt 4, Vue 3 `<script setup lang="ts">`, PrimeVue 4 components, Tailwind 4
 - Client data fetching: `@tanstack/vue-query` composables in `composables/queries/`
 - Server: Nitro routes in `server/api/`, Drizzle ORM + Postgres (`server/database/`)
-- Auth: `better-auth` (`lib/auth.ts`, `server/utils/auth.ts`, `composables/auth.ts`)
+- Hosting: self-hosted (ADR 0003). Nitro's `bun` preset builds a standalone
+  server that runs on Bun (`Bun.serve`, so Nitro WebSockets use Bun's native support)
+- Sign-in: one password per Viewer, no accounts (ADR 0001, see "Signing in")
 - Package manager: **bun** (do not use npm/pnpm/yarn; `bun.lock` is the lockfile)
 
 ## Commands
@@ -17,37 +20,269 @@ TMDB, with email/password accounts, playlists and watched-episode tracking.
 | Install | `bun install` |
 | Dev server | `bun run dev` |
 | Unit tests | `bun run test` |
-| Typecheck | `bun run typecheck` |
+| Typecheck | `bun run typecheck` (server: `bun run typecheck:server`) |
 | Production build | `bun run build` |
+| Run the production build | `bun run start` |
+| Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
+| Hash a Viewer's password | `bun run hash-password --viewer giorgi` (or `mariam`) |
+| Self-hosted stack up / down | `docker compose up -d --build --wait` / `docker compose down` (see "Self-hosting") |
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
 
+`bun run typecheck` does not cover `server/` (Nitro's own tsconfig). Check it,
+and the `realtime/` modules it imports, with `bun run typecheck:server`, which
+must report no errors.
+
 `typescript` is pinned to 6.x on purpose: `vue-tsc` (used by `nuxt typecheck`)
 cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.
 
+## Local database
+Development uses the local Docker Postgres from `compose.dev.yaml`. Its
+credentials match the `DB_*` values in `.env.example`; copy those into `.env`,
+start it (see Commands), then `bun run db:migrate`. `DB_CA` stays empty locally:
+the connection uses SSL only when `DB_CA` holds a CA certificate
+(`server/database/connection.ts`, shared by the app and `drizzle.config.ts`).
+The initial migration seeds each Viewer's History, Watch Later and Favorites.
+
+## Signing in
+The password typed on `/sign-in` decides which Viewer you are; a signed cookie
+then carries that Viewer for a year. The server refuses to start until `.env`
+has both Viewers' password hashes and the cookie secret (see `.env.example`).
+- `server/viewer/signIn.ts` owns who is asking: password to Viewer, the cookie,
+  throttling and the startup check. Framework-free, tested in
+  `tests/server/viewerSignIn.test.ts` with a fake clock.
+- Known limit: one password for both Viewers. Each hash has its own salt, so
+  the startup check only catches the same hash pasted twice; the server
+  cannot tell two hashes of one password apart from the hashes alone. When
+  such a password is used, the sign-in signs nobody in and logs a
+  configuration error. To prevent it, `bun run hash-password` refuses the
+  other Viewer's password when it has their hash (from the environment,
+  which bun loads from `.env`, or `--other-hash <hash>`); `--viewer` says
+  whose password it is.
+- `server/middleware/viewer.ts` rejects every API request without a valid
+  cookie except `POST /api/sign-in`. WebSocket upgrades bypass Nitro
+  middleware: authorize them with
+  `useViewerSignIn().readViewer(request.headers.get("cookie"))`.
+- `middleware/viewer.global.ts` sends signed-out visitors to `/sign-in`; every
+  other page is for a signed-in Viewer.
+
+## Realtime
+Presence, the Watch Party and the Call run over one WebSocket per Device
+(ADR 0003). `realtime/` is framework-free, shared by server, browser and tests,
+and imported explicitly. A feature lives in `realtime/<feature>/`:
+- `protocol.ts`: its messages, added to the unions in `realtime/protocol.ts`.
+- `coordinator.ts`: a `RealtimeFeature` (`realtime/coordinator.ts`), listed in
+  `realtime/server.ts`. `server/routes/realtime.ts` is only the transport.
+- `device.ts`: its device module, added in `realtime/device.ts`. The device
+  client drops messages sent while disconnected, so a module that keeps state
+  on the server sends it again on every `welcome`. Vue reaches it through
+  `composables/useRealtime.ts` (the Call: `composables/useCall.ts`).
+- Tests: seam 1, `tests/realtime/harness` (real coordinator and devices, fake
+  network and clock). Assert what devices receive. Code that awaits between
+  timers needs `await h.advanceAsync(ms)`.
+
+The server names each connection (`DeviceId`, new every time), but a Device
+(browser tab) keeps one `DeviceKey` across reconnects and reloads. The browser
+holds it in sessionStorage (`plugins/realtime.client.ts`), the device client
+sends it in the WebSocket URL, and features get it as `Device.key`. Seam 1
+devices use their name as key, and `device.reload()` opens a new page in the
+same tab.
+
+The Call (`realtime/call/`) is peer-to-peer WebRTC; the coordinator only
+relays setup between the two Viewers' Call devices. The browser's media and
+`RTCPeerConnection` come in through `CallPlatform` (`realtime/call/platform.ts`):
+`browserCallPlatform` in the browser, fakes in seam 1 (`harness/fakeMedia.ts`).
+Its UI, `<WatchCall>`, sits in `layouts/watchLayout.vue` and teleports its
+tiles into the open player's frame (`<WatchPlayerFrame>`, `usePlayerOverlayHost()`), so they stay
+visible in its fullscreen. ICE servers come from
+`GET /api/call/ice-servers` (`server/call/relay.ts`: `TURN_HOST`, `TURN_SECRET`).
+
+The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
+- `sources/`: one Syncable Source adapter per Source (`postMessage` both ways,
+  origins checked against `utils/sources.ts`), listed in `sources/index.ts`:
+  CineSrc, then VidFast. A factory states `canSetRate` (VidFast: no speed
+  command), which the coordinator reads through `canSetRate()`.
+- `partySync.ts`: on the device that takes part, joins an adapter to the
+  connection (`usePartySync` in `composables/useWatchParty.ts`). Its parts are in
+  `partySync/`: echoes, position reports (stall, "Click to resume"), the
+  ending, and the player status that drives Source fallback.
+Each Viewer takes part from one active device, the newest they joined from.
+The coordinator handles an intent only from that device, unless
+`FROM_ANY_DEVICE` (`coordinator.ts`) lists it: list there an intent any
+device of a Viewer may send.
+Shared controls: party sync turns a Viewer's play, pause, seek or speed in
+the Source's own player into a `watchParty:playback` intent
+(`sharedControls.ts` on the server), and every command it gives the player
+is noted as an expected echo (`createEchoes` in `partySync/echoes.ts`), so the
+player's report of it is never sent back. A new command party sync gives
+must be noted the same way. Devices drop a state whose `seq` is older than
+one they have.
+Source fallback (`sourceFallback.ts` on the server): party sync reports a
+Source that cannot play the Title (`watchParty:player`, status "failed").
+The coordinator adds it to the state's `failedSources` and offers both
+Viewers its `fallback`: the next Syncable Source, or `tab-share` once none
+is left. `watchParty:source` switches both players to a Source at the
+current position. Another episode clears `failedSources`.
+The end of a Title (`ending.ts` on the server): a player reports "pause"
+then "ended" at the end, as a `<video>` does; party sync drops that pause
+(adapters pass `duration` on with "timeupdate") and sends
+`watchParty:ended` with the episode after it. The device looks that up
+through the `EpisodeGuide` port (`episodeGuide.ts`: the TV show query in
+`usePartySync`, `shows` in the harness); the coordinator never fetches
+TMDB. It then runs the `next-episode` phase ("Next episode in 10s", cancel
+with `watchParty:cancelNext`) and moves both through the same path as a
+chosen episode; after a movie or the last aired episode it ends the Watch
+Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
+Party ends ("left") and the other device keeps its player open
+(`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
+Party sync stays bound to the Watch Party it opened for.
+"Minimize" shrinks the Watch Party player to a mini-player in the bottom
+left corner (`usePartyPlayerMinimized`, UI state only): the same iframe and
+party sync keep running, its overlays and the Call's dock leave it, and the
+Viewer browses the site. "Watch together" on another Title from there
+replaces the Watch Party (`start` in `device.ts`).
+Staying in step (`drift.ts` on the server):
+- Party sync reports its player's position on the server's clock every
+  second (`watchParty:position`). It skips the report while a seek is on its
+  way and at the end of the Title.
+- Drift is the spread between the two players' latest reports (each one's
+  offset from the anchor at its report's time), never one player against
+  the anchor, and no player is rewound to correct it. Under 0.5 s apart is
+  left alone. Up to 2 s, the one behind is told to catch up
+  (`watchParty:catchUp`); when the one ahead is off the anchor, the anchor
+  moves to it instead and the one behind follows. Its reports from before
+  the catch-up could reach it are ignored.
+- A seek party sync gives aims ahead by how long the player's last seek took
+  (`seekTo` in `partySync.ts`), and one that still lands behind a playing
+  Watch Party is made once more, so slow seeks converge.
+- More than 2 s apart, `stalled`, or a third catch-up within 30 s: the Watch
+  Party goes to the `waiting` phase, frozen where the player furthest ahead
+  is. `stalled` means no time update for 2 s, or a play command the browser
+  refused, which shows "Click to resume". The Viewer who fell behind plays on
+  up to the frozen point; once every player is there, all start again at one
+  moment just ahead.
+- An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
+  for the same way, from where it left; also before the Title starts (the
+  countdown's ready gate), which then starts once everyone is there instead
+  of "Getting ready…" forever. A waiting invite stays while the
+  starter has any device on the site, and ends ("gone") once they have had
+  none for 2 minutes (`INVITE_GRACE_MS`).
+- The Device a Viewer takes part from rejoins when it connects again (same
+  `DeviceKey`): the coordinator points `activeDevices` at its new connection.
+  While the Watch Party waits for a Viewer whose device is gone, any device
+  of theirs that connects takes its place.
+- `device.ts` decides `activeHere` by the connection it heard the state on,
+  so a new `welcome` does not close the player before the state that follows.
+- A Tab Share is left alone: it stands still anyway, and position reports
+  are among the intents it ignores. Its sharer keeps sharing across a
+  reconnect (same Device). A reload loses the tab, so the reloaded page stops
+  the Tab Share and both go back to the Syncable Source. A sharer whose
+  active device has been gone for 30 s (`TAB_SHARE_GONE_MS`) has gone for
+  good: the coordinator stops the Tab Share, tells the other Viewer
+  (`lastChange` "sharer-gone"), and waits for the sharer on the Syncable
+  Source, paused.
+Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
+`watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
+sharer, Source, sound). It stands still, paused, and the coordinator ignores
+intents about Syncable Source players (`exceptInTabShare`); the Watch Party
+player runs no party sync meanwhile (`usePartySync(iframe, enabled)`, and the
+harness likewise). The tab travels in the Call's `tabVideo`/`tabAudio` slots:
+`call.shareTab()` asks the browser first (from the click), then joins the
+Call. The device module keeps both sides in agreement: once the sharer's
+device no longer shares in the Call (the browser's "Stop sharing", leaving or
+moving the Call, takeover) it sends `watchParty:stopTabShare`, and once the
+Tab Share is over (either Viewer stopped it, another episode, the Watch Party
+ended) it releases the tab. Echo: see `realtime/call/tabCapture.ts`.
+The coordinator records History through the `HistoryPort` that
+`server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
+once per Syncable Source with an adapter: a new one needs a fake player that
+speaks its format in `tests/realtime/harness/fakeSourcePlayers.ts`.
+
+## Self-hosting
+`compose.yaml` runs the whole site on one machine (ADR 0003). Its settings
+come from `.env` next to it: the variables in `.env.example`, including the
+"self-hosted stack" section at its end. Services:
+- `app`: the image from `Dockerfile` (the `bun` preset's `.output`). It has no
+  published port: only Caddy reaches it, since the sign-in throttle trusts
+  `X-Forwarded-For`.
+- `migrate`: a one-shot run of the same image that applies `drizzle/`
+  (`scripts/migrate.ts`, bundled as `migrate.mjs`). `app` starts only after it
+  succeeds.
+- `postgres`: data on the `postgres-data` volume, reachable only inside the stack.
+- `caddy`: HTTPS for `DOMAIN` and the realtime WebSocket (`deploy/Caddyfile`).
+  Certificates live on the `caddy-data` volume.
+- `coturn`: the Call's relay (`deploy/turnserver.conf`, started by
+  `deploy/coturn.sh`). It shares `TURN_SECRET` with the app, and the app's
+  `TURN_HOST` defaults to `DOMAIN`.
+
+Run it with `docker compose up -d --build --wait`. Run the same command again
+after pulling changes; it rebuilds the image and applies new migrations. Use
+`docker compose logs -f app` for logs. `docker compose down -v` deletes the
+database.
+
+The VPS needs:
+- Docker Engine with the Compose plugin.
+- A domain whose DNS A record points straight at the VPS, with no CDN proxy
+  in between: browsers reach coturn at that name too.
+- These inbound ports open, and no others:
+  - 80/tcp: certificates and the redirect to HTTPS
+  - 443/tcp and 443/udp: HTTPS and HTTP/3
+  - 3478/udp and 3478/tcp: STUN and TURN
+  - 49160-49200/udp: the relay range
+- `TURN_EXTERNAL_IP` set to its public IPv4 address. If it is left empty,
+  coturn looks the address up as it starts.
+
+Known limits of the Call's relay (follow-ups, not done yet):
+- No TURN over TLS. coturn only listens on 3478 (UDP and TCP), so a network
+  that allows nothing but TLS on 443 cannot reach the relay, and the Call
+  fails there. The fix is a `turns:` listener on 5349 using Caddy's
+  certificate, offered in `server/call/relay.ts` next to the `turn:` URLs.
+- Without `TURN_HOST` and `TURN_SECRET` (development), `GET
+  /api/call/ice-servers` returns no ICE servers at all, not even STUN, so
+  devices only connect directly: on one machine or one local network.
+
+To run the stack locally, keep its settings in a separate file such as
+`.env.stack` (gitignored). Use `DOMAIN=localhost` and `TURN_EXTERNAL_IP=127.0.0.1`,
+and if 80, 443 or 3478 are taken, set `HTTP_PORT`, `HTTPS_PORT` and `TURN_PORT`.
+Start it with `docker compose -p watch-local --env-file .env.stack up -d --build --wait`,
+then open `https://localhost:<HTTPS_PORT>` in two browser profiles, one per
+Viewer. Caddy signs `localhost` with its own CA. Trust its root
+(`docker compose ... cp caddy:/data/caddy/pki/authorities/local/root.crt .`)
+or accept the browser's warning. Pages that call TMDB need a real
+`TMDB_API_KEY`.
+
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
-- The database in `.env` may be production. Never run `db:push`, `db:migrate`
-  or `db:studio`, and do not create test users through the dev server, unless
-  the operator has confirmed the database is disposable.
+- Point `db:push`, `db:migrate`, `db:studio` and any test data at the local
+  Docker Postgres only.
+- Never run `docker compose down -v` against the VPS's stack: it deletes the
+  database and Caddy's certificates.
 
 ## Layout
-- `pages/` routes; every page sets `definePageMeta({ auth: ... })` (see `middleware/auth.global.ts`)
+- `pages/` routes
 - `components/watch/` UI; auto-imported as `<WatchXxx>`
 - `composables/queries/*.ts` vue-query options + hooks, re-exported from `composables/index.ts`
   (nested composables are NOT auto-imported unless re-exported there)
 - `composables/queryKeys.ts` the single source of query keys
 - `utils/watchRepository.ts` thin HTTP client used by the query composables
 - `stores/watchStore.ts` Pinia store (search box state)
-- `server/api/watch/**` unauthenticated TMDB proxy; `server/api/playlists/**` and
-  `server/api/watched-episodes/**` authenticated, DB-backed
+- `server/api/watch/**` TMDB proxy; `server/api/playlists/**` and
+  `server/api/watched-episodes/**` DB-backed, per Viewer
+- `server/api/analyses/**` DB-backed, shared by both Viewers: the roles in
+  `models/Viewer.ts` (`ANALYSIS_WRITER`, `ANALYSIS_GRADER`) decide who may
+  write, delete or grade
+- `server/analyses/` the Analyses rules, framework-free (`analyses.ts`, storage
+  through its `AnalysisStore` port, tested on an in-memory store in
+  `tests/server/`), and the port's Postgres store (`postgresStore.ts`)
 - `server/utils/*.ts` are auto-imported inside `server/`
+- `realtime/` the realtime connection, server and device sides (see "Realtime")
 
 ## Conventions
 - New client reads/writes go through vue-query composables, not direct
   `watchRepository($apiClient)` calls from components.
-- Server handlers call `requireAuthSession(event)` first when they touch user data.
+- Server handlers that touch a Viewer's data start with
+  `const viewer = requireViewer(event)` (`giorgi` or `mariam`).
 - Tests live in `tests/**` and run in plain Node: they can only import modules
   that do not depend on Nuxt auto-imports at runtime.
 - Commit messages: conventional commits (`fix: ...`, `chore: ...`).

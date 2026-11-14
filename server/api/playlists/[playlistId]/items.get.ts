@@ -3,9 +3,9 @@ import { db } from "../../../database/db";
 import { watchPlaylistItems } from "../../../database/watch-schema";
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
+  const viewer = requireViewer(event);
   const { playlistId } = await getValidatedRouterParams(event, playlistParamsSchema.parse);
-  const playlist = await requireOwnedPlaylist(playlistId, session.user.id);
+  const playlist = await requireOwnedPlaylist(playlistId, viewer);
 
   const items = await db.select()
     .from(watchPlaylistItems)

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   addPlaylistItemBodySchema,
+  analysisBodySchema,
   deletePlaylistItemsBodySchema,
   discoverQuerySchema,
   genreIdsSchema,
+  gradeBodySchema,
+  movieIdParamsSchema,
   playlistParamsSchema,
   seasonParamsSchema,
+  signInBodySchema,
   tmdbIdParamsSchema,
   watchedEpisodeBodySchema,
 } from "../../server/utils/validation";
@@ -71,6 +75,76 @@ describe("body schemas", () => {
     expect(
       watchedEpisodeBodySchema.safeParse({ tvId: -1, seasonNumber: 1, episodeNumber: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe("movieIdParamsSchema", () => {
+  it("holds a movie id to the TMDB id rules", () => {
+    expect(movieIdParamsSchema.parse({ movieId: "550" })).toEqual({ movieId: 550 });
+    for (const movieId of ["abc", "", "-1", "0", "1.5", "99999999999"]) {
+      expect(movieIdParamsSchema.safeParse({ movieId }).success).toBe(false);
+    }
+  });
+});
+
+describe("analysisBodySchema", () => {
+  it("trims the text and keeps its line breaks", () => {
+    expect(analysisBodySchema.parse({ text: "  First thought.\n\nSecond thought.\n  " })).toEqual({
+      text: "First thought.\n\nSecond thought.",
+    });
+  });
+
+  it("takes up to 2,000 characters, counted after trimming", () => {
+    expect(analysisBodySchema.safeParse({ text: "x".repeat(2000) }).success).toBe(true);
+    expect(analysisBodySchema.safeParse({ text: ` ${"x".repeat(2000)}\n` }).success).toBe(true);
+    expect(analysisBodySchema.safeParse({ text: "x".repeat(2001) }).success).toBe(false);
+  });
+
+  it("refuses an empty Analysis", () => {
+    for (const body of [{ text: "" }, { text: "  \n\t " }, {}, { text: 42 }, null]) {
+      expect(analysisBodySchema.safeParse(body).success).toBe(false);
+    }
+  });
+});
+
+describe("gradeBodySchema", () => {
+  it("takes a whole Grade from -1 to 10", () => {
+    for (const grade of [-1, 0, 7, 10]) {
+      expect(gradeBodySchema.parse({ grade })).toEqual({ grade, remark: null });
+    }
+    for (const grade of [-2, 11, 7.5, "7", null, undefined]) {
+      expect(gradeBodySchema.safeParse({ grade }).success).toBe(false);
+    }
+    expect(gradeBodySchema.safeParse(null).success).toBe(false);
+  });
+
+  it("trims the remark and keeps its line breaks", () => {
+    expect(gradeBodySchema.parse({ grade: 8, remark: "  Good.\n\nMissed the ending.\n " })).toEqual({
+      grade: 8,
+      remark: "Good.\n\nMissed the ending.",
+    });
+  });
+
+  it("takes a remark of up to 500 characters, counted after trimming", () => {
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: "x".repeat(500) }).success).toBe(true);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: ` ${"x".repeat(500)}\n` }).success).toBe(true);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: "x".repeat(501) }).success).toBe(false);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: 42 }).success).toBe(false);
+  });
+
+  it("treats an empty or missing remark as no remark", () => {
+    for (const body of [{ grade: 5 }, { grade: 5, remark: "" }, { grade: 5, remark: " \n\t " }, { grade: 5, remark: null }]) {
+      expect(gradeBodySchema.parse(body)).toEqual({ grade: 5, remark: null });
+    }
+  });
+});
+
+describe("signInBodySchema", () => {
+  it("takes one password of a sane length", () => {
+    expect(signInBodySchema.parse({ password: "a password" })).toEqual({ password: "a password" });
+    for (const body of [{}, { password: "" }, { password: 42 }, { password: "x".repeat(1025) }, null]) {
+      expect(signInBodySchema.safeParse(body).success).toBe(false);
+    }
   });
 });
 

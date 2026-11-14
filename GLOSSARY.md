@@ -8,6 +8,10 @@ A private site where Giorgi and Mariam find movies and TV shows and watch them, 
 Giorgi or Mariam, the only two people who can use the site. Each signs in with their own password.
 _Avoid_: User, member, account
 
+**Device**:
+One browser tab where a Viewer has the site open, holding one realtime connection at a time. It stays the same Device when it reconnects or the page reloads. A Viewer can have several at once.
+_Avoid_: Client, session, connection
+
 ## Watching
 
 **Title**:
@@ -35,3 +39,13 @@ _Avoid_: Screen share, stream
 **Call**:
 The audio/video call between the two Viewers. It exists independently of any Watch Party.
 _Avoid_: Video chat, meeting
+
+## Understanding
+
+**Analysis**:
+Giorgi's short written account of how he understood a movie, for Mariam to grade. A movie has at most one.
+_Avoid_: Review, take, essay, interpretation
+
+**Grade**:
+Mariam's mark for an Analysis: a whole number from -1 to 10, with an optional remark.
+_Avoid_: Rating, score

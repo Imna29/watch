@@ -5,13 +5,11 @@ import { WatchPlaylistItemType } from "~/models/apiModels/watch/Playlist";
 
 definePageMeta({
     layout: "watch-layout",
-    auth: false,
 });
 
 const id = Number(useRoute().params.id);
 const saveForLater = useSaveForLater();
 const isPlayerOpen = ref<boolean>(false);
-const { loggedIn } = useAuth();
 
 const { data: movieData, isPending, error } = useMovie(id);
 
@@ -59,7 +57,8 @@ function openAddToPlaylistDialog() {
         <span>Loading movie...</span>
     </div>
     <div class="container" v-else-if="movieData">
-        <WatchMoviePlayer v-model="isPlayerOpen" v-if="isPlayerOpen"></WatchMoviePlayer>
+        <WatchPlayerShell v-if="isPlayerOpen" :content-type="WatchPlaylistItemType.MOVIE" :tmdb-id="id" :title="movieData.title"
+            @close="isPlayerOpen = false"></WatchPlayerShell>
         <div class="relative left-1/2 right-1/2 ml-[-50vw]! mr-[-50vw]! w-dvw! m-0! p-0!" :style="backgroundStyle">
             <div class="overlay absolute inset-0"></div>
             <div class="container m-auto h-[700px] relative flex items-center">
@@ -81,7 +80,10 @@ function openAddToPlaylistDialog() {
                     <div class="mt-4">{{ movieData.overview }}</div>
                     <div class="mt-4 flex gap-2 place-items-center">
                         <Button class="py-5 px-5 text-lg" @click="isPlayerOpen = !isPlayerOpen">Watch Now</Button>
-                        <Button v-if="loggedIn" class="py-5 px-5 text-lg" severity="secondary" @click="
+                        <WatchTogetherButton
+                            :title="{ contentType: WatchPlaylistItemType.MOVIE, tmdbId: id, name: movieData.title }"
+                            :episode="null"></WatchTogetherButton>
+                        <Button class="py-5 px-5 text-lg" severity="secondary" @click="
                             saveForLater(
                                 movieData.title,
                                 id,
@@ -90,13 +92,14 @@ function openAddToPlaylistDialog() {
                             ">
                             Save for Later
                         </Button>
-                        <Button v-if="loggedIn" class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
+                        <Button class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
                             <ListPlus />
                         </Button>
                     </div>
                 </div>
             </div>
         </div>
+        <WatchAnalysis :movie-id="id"></WatchAnalysis>
         <div class="grid grid-cols-1">
             <div v-if="trailers && trailers?.length > 0">
                 <div class="my-4 text-4xl text-center">Trailers</div>

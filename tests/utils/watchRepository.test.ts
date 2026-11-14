@@ -51,6 +51,53 @@ describe("watchRepository", () => {
     });
   });
 
+  it("gets a movie's Analysis", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalysis(550);
+    expect(fetch).toHaveBeenCalledWith("/analyses/550");
+  });
+
+  it("puts an Analysis's text as a JSON body", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.writeAnalysis(550, "Tyler is the narrator.\nThe ending is a breakdown.");
+    expect(fetch).toHaveBeenCalledWith("/analyses/550", {
+      method: "PUT",
+      body: { text: "Tyler is the narrator.\nThe ending is a breakdown." },
+    });
+  });
+
+  it("deletes a movie's Analysis", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.deleteAnalysis(550);
+    expect(fetch).toHaveBeenCalledWith("/analyses/550", { method: "DELETE" });
+  });
+
+  it("puts a Grade and its remark to the movie's grade route", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.gradeAnalysis(550, -1, "Missed it.\nEntirely.");
+    await repo.gradeAnalysis(550, 10, null);
+    expect(fetch).toHaveBeenNthCalledWith(1, "/analyses/550/grade", {
+      method: "PUT",
+      body: { grade: -1, remark: "Missed it.\nEntirely." },
+    });
+    expect(fetch).toHaveBeenNthCalledWith(2, "/analyses/550/grade", {
+      method: "PUT",
+      body: { grade: 10, remark: null },
+    });
+  });
+
+  it("gets the list of Analyses", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalyses();
+    expect(fetch).toHaveBeenCalledWith("/analyses");
+  });
+
+  it("gets the count of Analyses to grade", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalysesToGrade();
+    expect(fetch).toHaveBeenCalledWith("/analyses/to-grade");
+  });
+
   it("passes the search term as an encoded query parameter", async () => {
     const { fetch, repo } = makeRepo();
     await repo.search("tom & jerry #1");

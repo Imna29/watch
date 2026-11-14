@@ -1,3 +1,5 @@
+import type { Viewer } from "../../Viewer";
+
 export enum WatchPlaylistType {
   HISTORY = "HISTORY",
   WATCH_LATER = "WATCH_LATER",
@@ -12,7 +14,7 @@ export enum WatchPlaylistItemType {
 
 export interface WatchPlaylist {
   id: string;
-  userId: string;
+  viewer: Viewer;
   name: string;
   type: WatchPlaylistType;
   createdAt: string;

@@ -3,7 +3,6 @@ import type Genre from "~/models/apiModels/watch/Genre";
 
 definePageMeta({
     layout: "watch-layout",
-    auth: false,
 });
 
 const first = ref<number>(0);

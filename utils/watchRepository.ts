@@ -1,4 +1,5 @@
 import type { $Fetch, NitroFetchRequest } from "nitropack";
+import type { Analysis, AnalysisList } from "~/models/apiModels/watch/Analysis";
 import type LastWatched from "~/models/apiModels/watch/LastWatched";
 import type {
   GenreResponse,
@@ -17,6 +18,8 @@ import type {
   TVShowDetails,
 } from "~/models/apiModels/watch/TvModels";
 import type WatchedEpisode from "~/models/apiModels/watch/WatchedEpisode";
+import type { Viewer } from "~/models/Viewer";
+import { SIGN_IN_REQUESTS } from "~/utils/signIn";
 
 function buildDiscoverQuery(
   ids: number[],
@@ -122,6 +125,78 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
       method: "DELETE",
       body: JSON.stringify({ itemIds }),
     });
+  },
+
+  // Analyses
+  /**
+   * Every Analysis in list order, with the average Grade (null while none is
+   * graded) and the count of Analyses to grade.
+   */
+  async getAnalyses() {
+    return fetch<AnalysisList>(`/analyses`);
+  },
+
+  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
+  async getAnalysesToGrade() {
+    return fetch<{ count: number }>(`/analyses/to-grade`);
+  },
+
+  /** The movie's Analysis; `analysis` is null when it has none. */
+  async getAnalysis(movieId: number) {
+    return fetch<{ analysis: Analysis | null }>(`/analyses/${movieId}`);
+  },
+
+  /**
+   * Writes the movie's Analysis, or replaces its text. Only the writer may
+   * (403 otherwise), and only until it is graded (409 after).
+   */
+  async writeAnalysis(movieId: number, text: string) {
+    return fetch<{ analysis: Analysis }>(`/analyses/${movieId}`, {
+      method: "PUT",
+      body: { text },
+    });
+  },
+
+  /**
+   * Deletes the movie's Analysis for good. Only the writer may (403
+   * otherwise); 404 when the movie has none, 409 once it is graded.
+   */
+  async deleteAnalysis(movieId: number) {
+    return fetch<void>(`/analyses/${movieId}`, { method: "DELETE" });
+  },
+
+  /**
+   * Sets or replaces the movie's Grade and remark (null for none). Only the
+   * grader may (403 otherwise); 404 when the movie has no Analysis.
+   */
+  async gradeAnalysis(movieId: number, grade: number, remark: string | null) {
+    return fetch<{ analysis: Analysis }>(`/analyses/${movieId}/grade`, {
+      method: "PUT",
+      body: { grade, remark },
+    });
+  },
+
+  // Viewer sign-in
+  /** The Viewer signed in on this device, or null when it is signed out. */
+  async getViewer(): Promise<Viewer | null> {
+    try {
+      const { viewer } = await fetch<{ viewer: Viewer }>(SIGN_IN_REQUESTS.viewer);
+      return viewer;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode === 401) return null;
+      throw error;
+    }
+  },
+
+  async signIn(password: string) {
+    return fetch<{ viewer: Viewer }>(SIGN_IN_REQUESTS.signIn, {
+      method: "POST",
+      body: { password },
+    });
+  },
+
+  async signOut() {
+    return fetch(SIGN_IN_REQUESTS.signOut, { method: "POST" });
   },
 
   // Watched Episodes
