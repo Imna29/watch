@@ -351,3 +351,55 @@ describe("the list of Analyses", () => {
     expect(await analyses.list("giorgi")).toEqual({ analyses: [], average: null });
   });
 });
+
+describe("the count of Analyses to grade", () => {
+  const INCEPTION = 27205;
+
+  it("counts the ungraded Analyses for the grader", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+    await analyses.write("giorgi", INCEPTION, "About Inception.");
+    await analyses.grade("mariam", MEMENTO, 7, null);
+
+    expect(await analyses.toGrade("mariam")).toBe(2);
+  });
+
+  it("is zero for the writer, even with ungraded Analyses", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+
+    expect(await analyses.toGrade("giorgi")).toBe(0);
+  });
+
+  it("goes down after a Grade, and a regrade leaves it there", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+
+    await analyses.grade("mariam", FIGHT_CLUB, 8, null);
+    expect(await analyses.toGrade("mariam")).toBe(1);
+
+    await analyses.grade("mariam", FIGHT_CLUB, 6, "On second thought.");
+    expect(await analyses.toGrade("mariam")).toBe(1);
+  });
+
+  it("goes up after a new Analysis, but not after an edit", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    expect(await analyses.toGrade("mariam")).toBe(1);
+
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+    expect(await analyses.toGrade("mariam")).toBe(2);
+
+    await analyses.write("giorgi", MEMENTO, "About Memento, revised.");
+    expect(await analyses.toGrade("mariam")).toBe(2);
+  });
+
+  it("is zero before any Analysis is written", async () => {
+    const { analyses } = setUp();
+
+    expect(await analyses.toGrade("mariam")).toBe(0);
+  });
+});

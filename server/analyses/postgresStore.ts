@@ -18,6 +18,10 @@ export function createPostgresAnalysisStore(db: Database): AnalysisStore {
       return rows.map(toAnalysis);
     },
 
+    async countUngraded() {
+      return db.$count(analyses, isNull(analyses.grade));
+    },
+
     // `insert ... on conflict do update ... where grade is null`: on a graded
     // row the update is skipped and nothing is returned.
     async writeUnlessGraded(movieId, text, at) {

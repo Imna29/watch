@@ -23,10 +23,12 @@ export interface Analysis {
   gradedAt: string | null;
 }
 
-/** `GET /api/analyses`: every Analysis, with the average Grade. */
+/** `GET /api/analyses`: every Analysis, with the average Grade and the count to grade. */
 export interface AnalysisList {
   /** Ungraded first, then newest first by first submission. */
   analyses: Analysis[];
   /** The mean Grade of the graded Analyses (-1 counts as -1), to one decimal; null while none is graded. */
   average: number | null;
+  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
+  toGrade: number;
 }

@@ -128,9 +128,17 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
   },
 
   // Analyses
-  /** Every Analysis in list order, with the average Grade (null while none is graded). */
+  /**
+   * Every Analysis in list order, with the average Grade (null while none is
+   * graded) and the count of Analyses to grade.
+   */
   async getAnalyses() {
     return fetch<AnalysisList>(`/analyses`);
+  },
+
+  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
+  async getAnalysesToGrade() {
+    return fetch<{ count: number }>(`/analyses/to-grade`);
   },
 
   /** The movie's Analysis; `analysis` is null when it has none. */

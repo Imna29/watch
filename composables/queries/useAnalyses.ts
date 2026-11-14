@@ -3,13 +3,23 @@ import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
 
 export const analysisOptions = {
-  /** Every Analysis in list order, with the average Grade (null while none is graded). */
+  /** Every Analysis in list order, with the average Grade (null while none is graded) and the count to grade. */
   list: () =>
     queryOptions({
       queryKey: queryKeys.analyses.list(),
       queryFn: async () => {
         const { $apiClient } = useNuxtApp()
         return watchRepository($apiClient).getAnalyses()
+      },
+    }),
+  /** How many Analyses wait for a Grade: the ungraded ones for the grader, zero for anyone else. */
+  toGrade: () =>
+    queryOptions({
+      queryKey: queryKeys.analyses.toGrade(),
+      queryFn: async () => {
+        const { $apiClient } = useNuxtApp()
+        const { count } = await watchRepository($apiClient).getAnalysesToGrade()
+        return count
       },
     }),
   /** The movie's Analysis, or null when it has none. */
@@ -26,6 +36,14 @@ export const analysisOptions = {
 
 export function useAnalysisList() {
   return useQuery(analysisOptions.list())
+}
+
+/** The count of Analyses to grade. In the `analyses` group, so every Analyses mutation refreshes it. */
+export function useAnalysesToGrade(options: { enabled?: MaybeRefOrGetter<boolean> } = {}) {
+  return useQuery({
+    ...analysisOptions.toGrade(),
+    enabled: computed(() => toValue(options.enabled) ?? true),
+  })
 }
 
 export function useMovieAnalysis(movieId: MaybeRefOrGetter<number>) {

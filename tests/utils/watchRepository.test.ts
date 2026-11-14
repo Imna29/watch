@@ -92,6 +92,12 @@ describe("watchRepository", () => {
     expect(fetch).toHaveBeenCalledWith("/analyses");
   });
 
+  it("gets the count of Analyses to grade", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalysesToGrade();
+    expect(fetch).toHaveBeenCalledWith("/analyses/to-grade");
+  });
+
   it("passes the search term as an encoded query parameter", async () => {
     const { fetch, repo } = makeRepo();
     await repo.search("tom & jerry #1");

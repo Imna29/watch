@@ -25,4 +25,4 @@ export {
 export { viewerOptions, useViewer, useSignIn, useSignOut } from './queries/useViewer'
 export { analysisOptions, useMovieAnalysis, useWriteAnalysis, useGradeAnalysis } from './queries/useAnalyses'
 export { useDeleteAnalysis } from './queries/useAnalyses'
-export { useAnalysisList } from './queries/useAnalyses'
+export { useAnalysisList, useAnalysesToGrade } from './queries/useAnalyses'
