@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/vue-query";
 import { systemClock } from "~/realtime/clock";
 import type { EndedNotice, LeftNotice, StartChoice } from "~/realtime/watchParty/device";
 import type { EpisodeGuide } from "~/realtime/watchParty/episodeGuide";
-import { createPartySync, type PartySyncView } from "~/realtime/watchParty/partySync";
+import { createPartySync, type PartySync, type PartySyncView } from "~/realtime/watchParty/partySync";
 import type { WatchPartyState } from "~/realtime/watchParty/protocol";
 import type { PlayerFrame } from "~/realtime/watchParty/sources/adapter";
 import type { Viewer } from "~/models/Viewer";
@@ -72,12 +72,27 @@ export function useWatchParty() {
   };
 }
 
+/** A view with nothing to show (any field not listed is unset, so falsy). */
+const BLANK_VIEW = {
+  player: "loading",
+  waitingFor: null,
+  countdown: null,
+  gettingReady: false,
+  lastChange: null,
+  nextEpisode: null,
+} as PartySyncView;
+
 /**
  * Party sync (`realtime/watchParty/partySync.ts`) for the Watch Party player
  * whose Source iframe is `iframe`. Render the iframe with `src`; `view` is
- * what to show over it. Stops when the calling component unmounts.
+ * what to show over it. Runs while `enabled` (not in Tab Share, where no
+ * Syncable Source plays: `src` is then empty, and `view` the last one), and
+ * stops when the calling component unmounts.
  */
-export function usePartySync(iframe: Readonly<Ref<HTMLIFrameElement | null | undefined>>) {
+export function usePartySync(
+  iframe: Readonly<Ref<HTMLIFrameElement | null | undefined>>,
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
   const { client, watchParty } = useRealtime();
   const src = ref("");
 
@@ -106,12 +121,29 @@ export function usePartySync(iframe: Readonly<Ref<HTMLIFrameElement | null | und
     episodesOf: (tmdbId) => queryClient.query(tvOptions.byId(tmdbId)),
   };
 
-  const sync = createPartySync({ watchParty, client, clock: systemClock, frame, episodes });
-  const view = shallowRef<PartySyncView>(sync.view);
-  sync.subscribe(() => {
-    view.value = sync.view;
-  });
-  onScopeDispose(() => sync.destroy());
+  let sync: PartySync | null = null;
+  // Until party sync first runs (a player that opens in Tab Share): nothing to show over the player.
+  const view = shallowRef(BLANK_VIEW);
+  function stop() {
+    sync?.destroy();
+    sync = null;
+    src.value = "";
+  }
+  watch(
+    () => toValue(enabled),
+    (on) => {
+      if (!on) return stop();
+      if (sync) return;
+      const started = createPartySync({ watchParty, client, clock: systemClock, frame, episodes });
+      sync = started;
+      view.value = started.view;
+      started.subscribe(() => {
+        view.value = started.view;
+      });
+    },
+    { immediate: true },
+  );
+  onScopeDispose(stop);
 
   return { src: readonly(src), view: shallowReadonly(view) };
 }
