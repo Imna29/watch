@@ -180,7 +180,8 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
       for (const device of caughtUpAt.keys()) {
         if (!connected.has(device)) caughtUpAt.delete(device);
       }
-      if (!current) return;
+      // A Tab Share stands still anyway, with no Syncable Source player to wait for (`./tabShare.ts`).
+      if (!current || current.mode === "tab-share") return;
       for (const viewer of VIEWERS) {
         const device = current.activeDevices[viewer];
         if (device === null || connected.has(device)) continue;

@@ -143,6 +143,10 @@ Staying in step (`drift.ts` on the server):
   of theirs that connects takes its place.
 - `device.ts` decides `activeHere` by the connection it heard the state on,
   so a new `welcome` does not close the player before the state that follows.
+- A Tab Share is left alone: it stands still anyway, and position reports
+  are among the intents it ignores. Its sharer keeps sharing across a
+  reconnect (same Device). A reload loses the tab, so the reloaded page stops
+  the Tab Share and both go back to the Syncable Source.
 Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
 `watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
 sharer, Source, sound). It stands still, paused, and the coordinator ignores
