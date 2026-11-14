@@ -13,6 +13,10 @@
  *   the Watch Party is, in the "waiting" phase. The Viewer who fell behind
  *   plays on up to there, so nobody misses anything, and once every player
  *   is there, all of them start again at one moment, `RESUME_DELAY_MS` on.
+ *
+ * A Viewer whose active device has been disconnected for
+ * `DISCONNECT_GRACE_MS` is waited for the same way, from where the Watch
+ * Party was when the device went away.
  */
 import { z } from "zod";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
@@ -34,6 +38,13 @@ export const DRIFT_LIMIT_S = 2;
  * start, so the news reaches every device first and they all start together.
  */
 export const RESUME_DELAY_MS = 1000;
+
+/**
+ * How long the active device of a Viewer may be disconnected before the
+ * Watch Party waits for them: long enough for a page reload or a quick
+ * reconnect to go unnoticed.
+ */
+export const DISCONNECT_GRACE_MS = 5000;
 
 /** After telling a device to catch up, give it this long before telling it again. */
 const CATCH_UP_COOLDOWN_MS = 3000;
@@ -63,6 +74,8 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
   const reports = new Map<Viewer, PositionMessage & { device: DeviceId }>();
   /** When each device was last told to catch up. */
   const caughtUpAt = new Map<DeviceId, number>();
+  /** When each active device that is not connected went away. */
+  const awaySince = new Map<DeviceId, number>();
   /** What a waiting Watch Party goes back to. */
   let resumeTo: "playing" | "paused" = "playing";
 
@@ -73,15 +86,31 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
     context.send(device.id, { type: "watchParty:catchUp", partyId: current.id, seq: current.seq });
   }
 
-  /** Pauses every player where the Watch Party is now, until `viewer` is there too. */
-  function wait(current: WatchPartyState, viewer: Viewer) {
+  /**
+   * Pauses every player where the Watch Party was at server time `at`,
+   * until `viewer`'s player is there too.
+   */
+  function wait(current: WatchPartyState, viewer: Viewer, reason: WaitingReason, at = context.now()) {
     if (current.phase.name === "playing" || current.phase.name === "paused") resumeTo = current.phase.name;
-    const now = context.now();
     publish({
       ...current,
-      phase: { name: "waiting", viewer, reason: "behind" },
-      anchor: { ...current.anchor, position: anchorAt(current.anchor, now).position, serverTime: now, playing: false },
+      phase: { name: "waiting", viewer, reason },
+      anchor: {
+        ...current.anchor,
+        position: anchorAt(current.anchor, at).position,
+        serverTime: context.now(),
+        playing: false,
+      },
     });
+  }
+
+  /** `viewer`'s active device went away at server time `since`, and has not come back. */
+  function gone(current: WatchPartyState, viewer: Viewer, since: number) {
+    const { phase } = current;
+    if (phase.name === "playing" || phase.name === "paused") wait(current, viewer, "disconnected", since);
+    else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
+      publish({ ...current, phase: { name: "waiting", viewer, reason: "disconnected" } });
+    }
   }
 
   /** Whether `viewer`'s player, as last reported, is where the waiting Watch Party is. */
@@ -117,8 +146,28 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
       if (phase === "waiting") return resumeWhenAllThere(current);
       if (phase !== "playing" && phase !== "paused") return;
       const behind = anchorAt(current.anchor, report.serverTime).position - report.position;
-      if (phase === "playing" && (report.stalled || behind > DRIFT_LIMIT_S)) wait(current, from.viewer);
+      if (phase === "playing" && (report.stalled || behind > DRIFT_LIMIT_S)) wait(current, from.viewer, "behind");
       else if (Math.abs(behind) > DRIFT_IGNORED_S) catchUp(from, current);
+    },
+
+    /** Called on every clock tick: waits for a Viewer whose active device has been gone too long. */
+    tick() {
+      const current = party();
+      const connected = new Set(context.devices().map((device) => device.id));
+      const active = new Set(current ? Object.values(current.activeDevices) : []);
+      for (const device of awaySince.keys()) {
+        if (!active.has(device) || connected.has(device)) awaySince.delete(device);
+      }
+      if (!current) return;
+      for (const viewer of VIEWERS) {
+        const device = current.activeDevices[viewer];
+        if (device === null || connected.has(device)) continue;
+        const since = awaySince.get(device) ?? context.now();
+        awaySince.set(device, since);
+        if (context.now() - since >= DISCONNECT_GRACE_MS) return gone(current, viewer, since);
+      }
     },
   };
 }
+
+type WaitingReason = Extract<WatchPartyState["phase"], { name: "waiting" }>["reason"];

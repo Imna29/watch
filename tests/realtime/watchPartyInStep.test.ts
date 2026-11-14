@@ -126,4 +126,25 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(biggestJump(seen.mariamPosition)).toBeLessThan(0.5);
     });
   });
+
+  describe("a Viewer whose connection drops", () => {
+    it("is waited for, with \"Waiting for Mariam…\", once she has been gone a few seconds", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      mariam.drop();
+      // The server only notices once her device has gone silent, and then gives her a few seconds.
+      h.advance(5 * SECOND);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(giorgi.partySync?.view.waitingFor).toBeNull();
+
+      h.advance(10 * SECOND);
+      expect(giorgi.player?.paused).toBe(true);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+
+      const waitingAt = giorgi.player!.position;
+      h.advance(MINUTE);
+      expect(giorgi.player).toMatchObject({ paused: true, position: waitingAt });
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+    });
+  });
 });

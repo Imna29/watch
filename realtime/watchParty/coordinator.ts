@@ -215,6 +215,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         if (party?.phase.name === "countdown" && party.phase.endsAt !== null && context.now() >= party.phase.endsAt) {
           publish({ ...party, phase: { name: "playing" } });
         }
+        inStep.tick();
       },
 
       handlers: onlyFromActiveDevices({
