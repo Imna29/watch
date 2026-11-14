@@ -54,6 +54,20 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
 - `middleware/viewer.global.ts` sends signed-out visitors to `/sign-in`; every
   other page is for a signed-in Viewer.
 
+## Realtime
+Presence (later the Watch Party and Call) runs over one WebSocket per Device
+(ADR 0003). `realtime/` is framework-free, shared by server, browser and tests,
+and imported explicitly. A feature lives in `realtime/<feature>/`:
+- `protocol.ts`: its messages, added to the unions in `realtime/protocol.ts`.
+- `coordinator.ts`: a `RealtimeFeature` (`realtime/coordinator.ts`), listed in
+  `realtime/server.ts`. `server/routes/realtime.ts` is only the transport.
+- `device.ts`: its device module, added in `realtime/device.ts`. The device
+  client drops messages sent while disconnected, so a module that keeps state
+  on the server sends it again on every `welcome`. Vue reaches it through
+  `composables/useRealtime.ts`.
+- Tests: seam 1, `tests/realtime/harness` (real coordinator and devices, fake
+  network and clock). Assert what devices receive.
+
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
 - Point `db:push`, `db:migrate`, `db:studio` and any test data at the local
@@ -70,6 +84,7 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
 - `server/api/watch/**` TMDB proxy; `server/api/playlists/**` and
   `server/api/watched-episodes/**` DB-backed, per Viewer
 - `server/utils/*.ts` are auto-imported inside `server/`
+- `realtime/` the realtime connection, server and device sides (see "Realtime")
 
 ## Conventions
 - New client reads/writes go through vue-query composables, not direct
