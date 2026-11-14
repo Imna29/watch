@@ -57,6 +57,7 @@ export function useWatchParty() {
     cancel: watchParty.cancel,
     dismissEnded: watchParty.dismissEnded,
     changeEpisode: watchParty.changeEpisode,
+    switchSource: watchParty.switchSource,
   };
 }
 

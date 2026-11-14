@@ -5,13 +5,14 @@
  * seam 1 harness drives it with a fake Source player.
  *
  * It loads the Watch Party's Title (or episode) in its Source, tells the
- * coordinator when the player is ready, keeps the player where the shared
- * state's anchor says it should be, sends the Viewer's own play, pause, seek
+ * coordinator when the player is ready (or the Source failed), keeps the
+ * player where the shared state's anchor says it should be, sends the
+ * Viewer's own play, pause, seek
  * and speed changes on as intents (never the echoes of its own commands),
  * and exposes what the player shell shows over the player (`PartySyncView`).
  */
 import { otherViewer, type Viewer } from "../../models/Viewer";
-import type { Playable } from "../../utils/sources";
+import type { Playable, SourceId } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
@@ -23,7 +24,7 @@ import {
   type WatchPartyChange,
   type WatchPartyState,
 } from "./protocol";
-import type { PlayerEvent, PlayerFrame, SyncableSourceAdapter } from "./sources/adapter";
+import { sourceFailed, type PlayerEvent, type PlayerFrame, type SyncableSourceAdapter } from "./sources/adapter";
 import { hasAdapter, SYNCABLE_SOURCE_ADAPTERS } from "./sources";
 
 /** A player this close to where it should be is left alone; further off, it is moved. */
@@ -171,8 +172,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   /** What the frame has loaded: the Source and what it plays (see `load`). */
   let loaded: string | null = null;
   let loadedEpisode: Episode | null = null;
-  /** The Watch Party this device last said its player is ready for. */
-  let reportedReadyFor: string | null = null;
+  let loadedSource: SourceId | null = null;
+  /** What this device last told the coordinator about its player (see `reportPlayer`). */
+  let reported: { partyId: string; player: "ready" | "failed" } | null = null;
   /** The shared state last looked at for a change message, by `seq`. */
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
@@ -281,7 +283,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     switch (event.type) {
       case "ready":
         setView({ player: "ready" });
-        reportReady();
+        reportPlayer();
         // The embed URL told the player to autoplay: its "play" is that command's echo.
         echoes.expect({ type: "play" });
         adapter?.requestStatus();
@@ -308,8 +310,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
         return;
       }
       case "error":
-        if (event.reason === "not-ready") setView({ player: "failed" });
-        return;
+        if (!sourceFailed(event)) return;
+        setView({ player: "failed" });
+        return reportPlayer();
     }
   }
 
@@ -373,8 +376,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     if (key === loaded) return;
     loaded = key;
     loadedEpisode = party.episode;
+    loadedSource = party.source;
     echoes.clear();
-    reportedReadyFor = null;
+    reported = null;
     const startAt = anchorAt(party.anchor, client.serverNow()).position;
     Object.assign(player, { paused: true, position: startAt, at: clock.now(), rate: 1 });
     if (adapter?.source.id !== party.source) {
@@ -391,11 +395,17 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     adapter.load(playable, startAt);
   }
 
-  function reportReady() {
+  /**
+   * Tells the coordinator, once per Watch Party, that the player is ready,
+   * or that its Source failed (Source fallback then offers the next one).
+   */
+  function reportPlayer() {
     const party = live();
-    if (!party || view.player !== "ready" || reportedReadyFor === party.id) return;
-    reportedReadyFor = party.id;
-    watchParty.playerReady(party.id, loadedEpisode);
+    if (!party || loadedSource === null || view.player === "loading") return;
+    if (reported?.partyId === party.id && reported.player === view.player) return;
+    reported = { partyId: party.id, player: view.player };
+    if (view.player === "ready") watchParty.playerReady(party.id, loadedEpisode, loadedSource);
+    else watchParty.playerFailed(party.id, loadedEpisode, loadedSource);
   }
 
   /** Shows 3, 2, 1 until the countdown's end, on the server's clock. */
@@ -440,7 +450,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       gettingReady: party.phase.name === "countdown" && party.phase.endsAt === null,
     });
     tellChange(party);
-    reportReady();
+    reportPlayer();
     countDown();
     startOnTime(party);
   }

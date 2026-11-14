@@ -25,6 +25,14 @@ import type {
 import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
 import { keepInStep, positionSchema } from "./drift";
 import { afterEpisodeChange, afterPlaybackChange, playbackSchema, sameEpisode } from "./sharedControls";
+import {
+  afterSourceFailed,
+  afterSourceSwitch,
+  noFailedSources,
+  sourceHasFailed,
+  sourceIdSchema,
+  switchSourceSchema,
+} from "./sourceFallback";
 import { WATCH_PARTY_SOURCES } from "./sources";
 
 /** The 3-2-1 before both players start. */
@@ -80,8 +88,9 @@ function partyIntentSchema<T extends string>(type: T) {
 const playerStatusSchema = z.object({
   type: z.literal("watchParty:player"),
   partyId: z.string().max(100),
-  status: z.literal("ready"),
+  status: z.enum(["ready", "failed"]),
   episode: episodeSchema.nullable(),
+  source: sourceIdSchema,
 });
 
 const changeEpisodeSchema = partyIntentSchema("watchParty:episode").extend({ episode: episodeSchema });
@@ -233,6 +242,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               title,
               episode,
               source: sources[0]!,
+              ...noFailedSources(),
               mode: "syncable-source",
               phase: { name: "inviting" },
               anchor: { position: 0, serverTime: now, playing: false, rate: 1 },
@@ -267,8 +277,15 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
 
         "watchParty:player": {
           schema: playerStatusSchema satisfies z.ZodType<PlayerStatusMessage>,
-          handle(from, { partyId, episode }) {
-            if (party?.id !== partyId || !sameEpisode(episode, party.episode)) return;
+          handle(from, { partyId, status, episode, source }) {
+            if (party?.id !== partyId || !sameEpisode(episode, party.episode) || source !== party.source) return;
+            if (status === "failed") {
+              // Source fallback: both Viewers are offered the next Syncable Source.
+              const failed = afterSourceFailed(party, sources);
+              if (failed) publish({ ...party, ...failed });
+              return;
+            }
+            if (sourceHasFailed(party)) return;
             readyDevices.add(from.id);
             startCountdownWhenReady();
           },
@@ -312,6 +329,23 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               lastChange: { kind: "episode", episode, by: from.viewer, seq: seq + 1 },
             });
             recordForBoth(party);
+          },
+        },
+
+        // Source fallback: another Syncable Source, the one offered or any other.
+        "watchParty:source": {
+          schema: switchSourceSchema,
+          handle(from, { partyId, source }) {
+            if (party?.id !== partyId || source === party.source || !sources.includes(source)) return;
+            // Both players load the new Source, and report when they have.
+            readyDevices = new Set();
+            publish({
+              ...party,
+              ...afterSourceSwitch(party, source, context.now()),
+              lastChangeBy: from.viewer,
+              // The seq `publish` gives this state.
+              lastChange: { kind: "source", source, by: from.viewer, seq: seq + 1 },
+            });
           },
         },
 
