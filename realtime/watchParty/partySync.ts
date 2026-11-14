@@ -16,6 +16,7 @@ import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
 import {
   takesPlaybackChanges,
+  type Episode,
   type PlaybackAnchor,
   type WatchPartyChange,
   type WatchPartyState,
@@ -155,6 +156,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   const player = { paused: true, position: 0, at: clock.now(), rate: 1 };
   const echoes = createEchoes(clock);
   let countdownTimer: TimerId | null = null;
+  /** What the frame has loaded: the Source and what it plays (see `load`). */
+  let loaded: string | null = null;
+  let loadedEpisode: Episode | null = null;
   /** The Watch Party this device last said its player is ready for. */
   let reportedReadyFor: string | null = null;
   /** The shared state last looked at for a change message, by `seq`. */
@@ -293,21 +297,40 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     }
   }
 
+  /**
+   * Loads what the Watch Party plays (its Title or episode, on its Source)
+   * unless the player already has it: at first, and again whenever a Viewer
+   * chooses another episode. The new document starts paused, at normal
+   * speed, with no commands on their way.
+   */
   function load(party: WatchPartyState) {
-    if (!hasAdapter(party.source)) {
-      setView({ player: "failed" });
-      return;
+    const playable = playableOf(party);
+    const key = JSON.stringify([party.source, playable]);
+    if (key === loaded) return;
+    loaded = key;
+    loadedEpisode = party.episode;
+    echoes.clear();
+    reportedReadyFor = null;
+    Object.assign(player, { paused: true, position: 0, at: clock.now(), rate: 1 });
+    if (adapter?.source.id !== party.source) {
+      adapter?.destroy();
+      adapter = null;
+      if (!hasAdapter(party.source)) {
+        setView({ player: "failed" });
+        return;
+      }
+      adapter = SYNCABLE_SOURCE_ADAPTERS[party.source]({ frame, clock, readyTimeoutMs });
+      adapter.on(heard);
     }
-    adapter = SYNCABLE_SOURCE_ADAPTERS[party.source]({ frame, clock, readyTimeoutMs });
-    adapter.on(heard);
-    adapter.load(playableOf(party), anchorAt(party.anchor, client.serverNow()).position);
+    setView({ player: "loading" });
+    adapter.load(playable, anchorAt(party.anchor, client.serverNow()).position);
   }
 
   function reportReady() {
     const party = live();
     if (!party || view.player !== "ready" || reportedReadyFor === party.id) return;
     reportedReadyFor = party.id;
-    watchParty.playerReady(party.id);
+    watchParty.playerReady(party.id, loadedEpisode);
   }
 
   /** Shows 3, 2, 1 until the countdown's end, on the server's clock. */
@@ -346,6 +369,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   function followParty() {
     const party = live();
     if (destroyed || !party) return;
+    load(party);
     setView({
       waitingFor: party.phase.name === "inviting" ? otherViewer(party.starter) : null,
       gettingReady: party.phase.name === "countdown" && party.phase.endsAt === null,
@@ -355,8 +379,6 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     countDown();
   }
 
-  const party = live();
-  if (party) load(party);
   followParty();
   const stopFollowing = watchParty.subscribe(followParty);
 

@@ -18,6 +18,15 @@ const iframe = computed(() => shell.value?.iframe);
 const { src, view } = usePartySync(iframe);
 
 const sourceName = computed(() => getSource(party.value.source).name);
+
+// The episode picker follows the Watch Party; choosing another episode there moves both Viewers to it.
+const chosen = reactive({ season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 });
+watch(() => party.value.episode, (episode) => {
+    if (episode) Object.assign(chosen, episode);
+});
+watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
+    watchParty.changeEpisode({ season, episode });
+});
 </script>
 
 <template>
@@ -45,6 +54,8 @@ const sourceName = computed(() => getSource(party.value.source).name);
             </div>
         </div>
         <template #controls>
+            <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season" v-model:episode="chosen.episode"
+                :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
             <span class="px-2 text-muted-color">Watching together on {{ sourceName }}</span>
         </template>
     </WatchPlayerShell>

@@ -17,6 +17,8 @@ export function describeChange(change: WatchPartyChange): string {
       return `${who} jumped to ${formatPosition(change.position)}`;
     case "rate":
       return `${who} changed the speed to ${change.rate}×`;
+    case "episode":
+      return `${who} switched to S${change.episode.season}E${change.episode.episode}`;
   }
 }
 

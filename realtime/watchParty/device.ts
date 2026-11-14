@@ -63,10 +63,16 @@ export interface DeviceWatchParty {
   /** Ends the Watch Party for both Viewers ("Cancel" while it waits). */
   cancel(): void;
   dismissEnded(): void;
-  /** Party sync: this device's player loaded Watch Party `partyId`'s Title. */
-  playerReady(partyId: string): void;
+  /** Party sync: this device's player loaded Watch Party `partyId`'s Title (`episode` of it, for a TV show). */
+  playerReady(partyId: string, episode: Episode | null): void;
   /** Party sync: the Viewer changed playback in this device's player. */
   playback(partyId: string, change: PlaybackChange): void;
+  /**
+   * Moves both Viewers to another `episode` of the Watch Party's TV show.
+   * While the Watch Party still waits for the other Viewer, it starts anew
+   * on that episode (a new invite) instead.
+   */
+  changeEpisode(episode: Episode): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -238,12 +244,20 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       changed();
     },
 
-    playerReady(partyId) {
-      client.send({ type: "watchParty:player", partyId, status: "ready" });
+    playerReady(partyId, episode) {
+      client.send({ type: "watchParty:player", partyId, status: "ready", episode });
     },
 
     playback(partyId, change) {
       client.send({ type: "watchParty:playback", partyId, change });
+    },
+
+    changeEpisode(episode) {
+      const current = live();
+      if (!current?.episode || !activeHere()) return;
+      if (current.episode.season === episode.season && current.episode.episode === episode.episode) return;
+      if (current.phase.name === "inviting") send({ title: current.title, episode }, current.id);
+      else client.send({ type: "watchParty:episode", partyId: current.id, episode });
     },
 
     subscribe(listener) {

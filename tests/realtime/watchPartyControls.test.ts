@@ -9,6 +9,13 @@ import type { FakePlayerOptions } from "./harness/fakeSourcePlayers";
 const MINUTE = 60 * SECOND;
 
 const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
+const SEVERANCE = { contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" };
+
+/** The change message `device` shows over the player ("Mariam paused at 1:02:14"); null when none. */
+function message(device: TestDevice) {
+  const change = device.partySync?.view.lastChange;
+  return change ? describeChange(change) : null;
+}
 
 describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %s", (source) => {
   /** Giorgi starts `title`, Mariam joins, and they watch a minute of it together. */
@@ -107,13 +114,68 @@ describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %
     });
   });
 
-  describe("the change message", () => {
-    /** The change message `device` shows over the player; null when none. */
-    function message(device: TestDevice) {
-      const change = device.partySync?.view.lastChange;
-      return change ? describeChange(change) : null;
-    }
+  describe("choosing another episode", () => {
+    const S1E1 = { season: 1, episode: 1 };
+    const S1E3 = { season: 1, episode: 3 };
 
+    it("moves both Viewers to it, and both start it together from its beginning", () => {
+      const { h, giorgi, mariam } = watchingTogether({ title: SEVERANCE, episode: S1E1 });
+
+      mariam.watchParty.changeEpisode(S1E3);
+      h.advance(SECOND);
+      for (const device of [giorgi, mariam]) {
+        expect(device.player?.playable).toEqual({ kind: "episode", tmdbId: SEVERANCE.tmdbId, ...S1E3 });
+      }
+      expect(message(giorgi)).toBe("Mariam switched to S1E3");
+
+      h.advance(10 * SECOND);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(giorgi.player!.position).toBeLessThan(10);
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+      expect(h.history.recorded.slice(-2)).toEqual([
+        { viewer: "giorgi", title: SEVERANCE, episode: S1E3 },
+        { viewer: "mariam", title: SEVERANCE, episode: S1E3 },
+      ]);
+    });
+
+    it("waits for both players to load the new episode, even when one only now reports the old one", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam", { delayMs: 2 * SECOND, player: { loadMs: 4 * SECOND } });
+      h.advance(5 * SECOND);
+      giorgi.watchParty.start(SEVERANCE, S1E1);
+      h.advance(5 * SECOND);
+      mariam.watchParty.join();
+      // Mariam's player has just loaded S1E1; the server hears it only after the change below.
+      h.advance(9 * SECOND);
+      expect(mariam.player).toMatchObject({ ready: true, playable: { episode: 1 } });
+      giorgi.watchParty.changeEpisode(S1E3);
+
+      for (let waited = 0; waited < 30 * SECOND && !(giorgi.player!.position > 0.5); waited += 50) h.advance(50);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player).toMatchObject({ ready: true, paused: false, playable: { episode: 3 } });
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    });
+  });
+
+  describe("personal settings", () => {
+    // Subtitles, audio track and quality never leave the Source's player, and
+    // fullscreen is the player shell's: volume is the one a Source reports.
+    it("stay personal: a volume change reaches nobody else", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      const changes = giorgi.watchParty.party!.seq;
+
+      mariam.player!.controls.setVolume(0.2);
+      h.advance(5 * SECOND);
+      expect(mariam.player?.volume).toBe(0.2);
+      expect(giorgi.player?.volume).toBe(1);
+      expect(giorgi.watchParty.party?.seq).toBe(changes);
+      expect(giorgi.partySync?.view.lastChange).toBeNull();
+    });
+  });
+
+  describe("the change message", () => {
     it("tells the other Viewer who did what, and where", () => {
       const { h, giorgi, mariam } = watchingTogether();
 

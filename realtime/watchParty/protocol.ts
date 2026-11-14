@@ -125,6 +125,8 @@ export interface PlayerStatusMessage {
   type: "watchParty:player";
   partyId: string;
   status: "ready";
+  /** The episode the player loaded (null: a movie): a report about an earlier episode does not count. */
+  episode: Episode | null;
 }
 
 /**
@@ -137,7 +139,7 @@ export type PlaybackChange =
   | { kind: "rate"; position: number; rate: number };
 
 /** A change `by` made, in the shared state numbered `seq`. */
-export type WatchPartyChange = PlaybackChange & { by: Viewer; seq: number };
+export type WatchPartyChange = (PlaybackChange | { kind: "episode"; episode: Episode }) & { by: Viewer; seq: number };
 
 /**
  * Whether Viewers control playback in this phase: both are in and the Title
@@ -152,6 +154,13 @@ export interface PlaybackMessage {
   type: "watchParty:playback";
   partyId: string;
   change: PlaybackChange;
+}
+
+/** The Viewer chose another episode of the TV show: both Viewers move to it. */
+export interface ChangeEpisodeMessage {
+  type: "watchParty:episode";
+  partyId: string;
+  episode: Episode;
 }
 
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
@@ -172,6 +181,7 @@ export type WatchPartyDeviceMessage =
   | TakeOverWatchPartyMessage
   | CancelWatchPartyMessage
   | PlayerStatusMessage
-  | PlaybackMessage;
+  | PlaybackMessage
+  | ChangeEpisodeMessage;
 
 export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;
