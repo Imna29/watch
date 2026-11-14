@@ -303,6 +303,30 @@ describe.each(syncableSourcesUnderTest())("a Watch Party on %s", (source) => {
       expect(laptop.watchParty.continuedElsewhere).toBe(true);
     });
 
+    it("ignores the player of the device it moved away from, even when it reports in late", () => {
+      const h = setUp();
+      const laptop = h.device("giorgi", { delayMs: 2 * SECOND, player: { loadMs: 3 * SECOND } });
+      const phone = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(5 * SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(8 * SECOND); // The laptop's player has just loaded; the server has yet to hear it.
+      phone.watchParty.join();
+      h.advance(3 * SECOND); // Now it has, after the phone took over.
+      laptop.watchParty.join(); // Back to the laptop, which loads its player again.
+      h.advance(3 * SECOND);
+
+      mariam.watchParty.join();
+      h.advance(4 * SECOND);
+      expect(mariam.partySync?.view).toMatchObject({ player: "ready", gettingReady: true, countdown: null });
+
+      h.advance(12 * SECOND);
+      expect(laptop.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(laptop.player!.position).toBeLessThan(10);
+      expect(mariam.player!.position).toBeCloseTo(laptop.player!.position, 1);
+    });
+
     it("can switch back to the first device", () => {
       const h = setUp();
       const giorgi = h.device("giorgi");
