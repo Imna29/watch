@@ -13,14 +13,19 @@
  * ```
  *
  * A test device is what `createRealtimeDevice` returns (`client`, `presence`,
- * ...) plus its own clock and network controls. Device-side parts that need
- * more than the connection (party sync with a fake Source player) can be
- * built on `device.client` and `device.clock`.
+ * `call`, ...) plus its own clock and network controls, and its fake browser
+ * media (`media`: microphone, camera, peer connections). Device-side parts
+ * that need more than the connection (party sync with a fake Source player)
+ * can be built on `device.client` and `device.clock`.
+ *
+ * Code that awaits between timers (the Call's media and peer connections)
+ * needs `await h.advanceAsync(ms)`, which lets promises settle on the way.
  */
 import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import { createFakeClock } from "./fakeClock";
+import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
 import { createFakeServer, type DeviceTraffic, type Link } from "./fakeNetwork";
 
 export const SECOND = 1000;
@@ -40,6 +45,8 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly viewer: Viewer;
   /** This device's own clock (skewed by `clockSkewMs`), on the harness's timeline. */
   readonly clock: Clock;
+  /** This device's fake browser media: what its microphone and camera allow, and its peer connections. */
+  readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
   /** Changes this device's one-way network delay. */
@@ -53,6 +60,7 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
 export function createHarness() {
   const clock = createFakeClock();
   const server = createFakeServer(clock);
+  const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};
 
   return {
@@ -65,6 +73,11 @@ export function createHarness() {
       clock.advance(ms);
     },
 
+    /** Like `advance`, letting promises settle on the way. */
+    advanceAsync(ms: number) {
+      return clock.advanceAsync(ms);
+    },
+
     /** A new device of `viewer`, signed in and connecting. */
     device(viewer: Viewer, options: TestDeviceOptions = {}): TestDevice {
       counts[viewer] = (counts[viewer] ?? 0) + 1;
@@ -72,10 +85,12 @@ export function createHarness() {
       const link: Link = { delayMs: options.delayMs ?? DEFAULT_DELAY_MS, dropped: false };
       const traffic = { name, received: [], connectionAttempts: [] };
       const deviceClock = clock.skewed(options.clockSkewMs ?? 0);
+      const media = mediaWorld.platformFor(name, deviceClock);
       const device = createRealtimeDevice({
         url: "ws://watch.test/realtime",
         openSocket: server.socketsFor(viewer, link, traffic),
         clock: deviceClock,
+        call: media,
       });
       device.client.start();
       return {
@@ -83,6 +98,7 @@ export function createHarness() {
         name,
         viewer,
         clock: deviceClock,
+        media,
         received: traffic.received,
         connectionAttempts: traffic.connectionAttempts,
         closeSite() {

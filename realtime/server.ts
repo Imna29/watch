@@ -3,6 +3,7 @@
  * the WebSocket handler (`server/routes/realtime.ts`) and by the seam 1 test
  * harness, so both run the same thing. A new feature is added to the list.
  */
+import { call } from "./call/coordinator";
 import { createCoordinator, type Coordinator } from "./coordinator";
 import { presence } from "./presence/coordinator";
 
@@ -19,6 +20,7 @@ export function createRealtimeCoordinator({ now }: RealtimeServerOptions): Coord
     now,
     features: [
       presence(),
+      call(),
     ],
   });
 }

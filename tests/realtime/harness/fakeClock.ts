@@ -3,6 +3,12 @@ import type { Clock, TimerId } from "../../../realtime/clock";
 export interface FakeClock extends Clock {
   /** Moves time forward, running every timer that falls due on the way, in order. */
   advance(ms: number): void;
+  /**
+   * Like `advance`, but lets pending promises settle before each timer and
+   * at the end, for code that awaits between timers (the Call's media and
+   * peer connections).
+   */
+  advanceAsync(ms: number): Promise<void>;
   /** The same timeline, read by a device whose own clock is `skewMs` ahead (negative: behind). */
   skewed(skewMs: number): Clock;
 }
@@ -46,6 +52,19 @@ export function createFakeClock(start = Date.UTC(2026, 10, 14, 20, 0, 0)): FakeC
       time = until;
     },
 
+    async advanceAsync(ms) {
+      const until = time + ms;
+      for (;;) {
+        await settle();
+        const next = timers[0];
+        if (!next || next.due > until) break;
+        timers.shift();
+        time = next.due;
+        next.callback();
+      }
+      time = until;
+    },
+
     skewed(skewMs) {
       return {
         now: () => time + skewMs,
@@ -55,4 +74,9 @@ export function createFakeClock(start = Date.UTC(2026, 10, 14, 20, 0, 0)): FakeC
     },
   };
   return clock;
+}
+
+/** Resolves once every promise that can settle now has (a real macrotask runs after all microtasks). */
+function settle() {
+  return new Promise<void>((resolve) => setImmediate(resolve));
 }
