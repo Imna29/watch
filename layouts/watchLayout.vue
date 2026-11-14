@@ -20,7 +20,8 @@ useRealtime();
                 <slot />
             </div>
         </div>
-        
+        <!-- The Call lives here, not in a page, so browsing and the player never drop it. -->
+        <WatchCall></WatchCall>
     </div>
 </template>
 

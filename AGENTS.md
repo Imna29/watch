@@ -55,7 +55,7 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
   other page is for a signed-in Viewer.
 
 ## Realtime
-Presence (later the Watch Party and Call) runs over one WebSocket per Device
+Presence and the Call (later the Watch Party) run over one WebSocket per Device
 (ADR 0003). `realtime/` is framework-free, shared by server, browser and tests,
 and imported explicitly. A feature lives in `realtime/<feature>/`:
 - `protocol.ts`: its messages, added to the unions in `realtime/protocol.ts`.
@@ -64,9 +64,19 @@ and imported explicitly. A feature lives in `realtime/<feature>/`:
 - `device.ts`: its device module, added in `realtime/device.ts`. The device
   client drops messages sent while disconnected, so a module that keeps state
   on the server sends it again on every `welcome`. Vue reaches it through
-  `composables/useRealtime.ts`.
+  `composables/useRealtime.ts` (the Call: `composables/useCall.ts`).
 - Tests: seam 1, `tests/realtime/harness` (real coordinator and devices, fake
-  network and clock). Assert what devices receive.
+  network and clock). Assert what devices receive. Code that awaits between
+  timers needs `await h.advanceAsync(ms)`.
+
+The Call (`realtime/call/`) is peer-to-peer WebRTC; the coordinator only
+relays setup between the two Viewers' Call devices. The browser's media and
+`RTCPeerConnection` come in through `CallPlatform` (`realtime/call/platform.ts`):
+`browserCallPlatform` in the browser, fakes in seam 1 (`harness/fakeMedia.ts`).
+Its UI, `<WatchCall>`, sits in `layouts/watchLayout.vue` and teleports its
+tiles into the open player shell (`usePlayerOverlayHost()`), so they stay
+visible in the shell's fullscreen. ICE servers come from
+`GET /api/call/ice-servers` (`server/call/relay.ts`: `TURN_HOST`, `TURN_SECRET`).
 
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
