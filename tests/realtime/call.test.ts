@@ -92,6 +92,24 @@ describe("the Call", () => {
     expect(hears(mariam)).toBe("giorgi1 microphone");
   });
 
+  it("joins with the microphone on, even when the Viewer had muted it before leaving", async () => {
+    const { h, giorgi, mariam } = await bothOnline();
+    giorgi.call.join();
+    mariam.call.join();
+    await h.advanceAsync(SECOND);
+    giorgi.call.setMic(false);
+    await h.advanceAsync(SECOND);
+
+    giorgi.call.leave();
+    await h.advanceAsync(SECOND);
+    giorgi.call.join();
+    await h.advanceAsync(SECOND);
+
+    expect(giorgi.call.state.mic).toEqual({ on: true, problem: null });
+    expect(mariam.call.state.other).toEqual({ mic: true, camera: false });
+    expect(hears(mariam)).toBe("giorgi1 microphone");
+  });
+
   it("shows the other Viewer's camera while it is on, and releases the camera when turned off", async () => {
     const { h, giorgi, mariam } = await bothOnline();
     giorgi.call.join();
@@ -128,6 +146,111 @@ describe("the Call", () => {
     expect(mariam.call.state).toMatchObject({ status: "in", other: null, connection: "waiting" });
     expect(hears(mariam)).toBeNull();
     expect(giorgi.media.peerConnections.at(-1)?.connectionState).toBe("closed");
+  });
+
+  describe("in push-to-talk", () => {
+    /** Giorgi and Mariam in the Call, microphones on. */
+    async function inTheCall() {
+      const { h, giorgi, mariam } = await bothOnline();
+      giorgi.call.join();
+      mariam.call.join();
+      await h.advanceAsync(SECOND);
+      return { h, giorgi, mariam };
+    }
+
+    it("lets the other Viewer hear the microphone only while the Viewer holds the talk button", async () => {
+      const { h, giorgi, mariam } = await inTheCall();
+
+      giorgi.call.setPushToTalk(true);
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state).toMatchObject({ mic: { on: false }, pushToTalk: { on: true, holding: false } });
+      expect(mariam.call.state.other).toEqual({ mic: false, camera: false });
+      expect(hears(mariam)).toBeNull();
+
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state).toMatchObject({ mic: { on: true }, pushToTalk: { on: true, holding: true } });
+      expect(mariam.call.state.other).toEqual({ mic: true, camera: false });
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+
+      giorgi.call.holdToTalk(false); // Released, the pointer left the button, or the touch was cancelled.
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state).toMatchObject({ mic: { on: false }, pushToTalk: { on: true, holding: false } });
+      expect(mariam.call.state.other).toEqual({ mic: false, camera: false });
+      expect(hears(mariam)).toBeNull();
+    });
+
+    it("leaves the microphone as the mute button left it when push-to-talk is turned off", async () => {
+      const { h, giorgi, mariam } = await inTheCall();
+      giorgi.call.setPushToTalk(true);
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+
+      giorgi.call.setPushToTalk(false); // While still holding the button.
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state).toMatchObject({ mic: { on: true }, pushToTalk: { on: false, holding: false } });
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+
+      giorgi.call.setMic(false);
+      giorgi.call.setPushToTalk(true);
+      await h.advanceAsync(SECOND);
+      giorgi.call.setPushToTalk(false);
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state.mic.on).toBe(false);
+      expect(mariam.call.state.other).toEqual({ mic: false, camera: false });
+      expect(hears(mariam)).toBeNull();
+    });
+
+    it("stays on when the Viewer leaves and joins again, and joins with the microphone quiet", async () => {
+      const { h, giorgi, mariam } = await inTheCall();
+      giorgi.call.setPushToTalk(true);
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+
+      giorgi.call.leave(); // While holding the button.
+      await h.advanceAsync(SECOND);
+      giorgi.call.join();
+      await h.advanceAsync(SECOND);
+      expect(giorgi.call.state).toMatchObject({
+        status: "in",
+        mic: { on: false },
+        pushToTalk: { on: true, holding: false },
+      });
+      expect(mariam.call.state.other).toEqual({ mic: false, camera: false });
+      expect(hears(mariam)).toBeNull();
+
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+    });
+
+    it("asks for a microphone that could not start when the button is held, and keeps it quiet once let go", async () => {
+      const { h, giorgi, mariam } = await bothOnline();
+      giorgi.media.microphone = "NotAllowedError";
+      giorgi.call.join();
+      mariam.call.join();
+      await h.advanceAsync(SECOND);
+      giorgi.call.setPushToTalk(true);
+      await h.advanceAsync(SECOND);
+
+      giorgi.media.microphone = "allow";
+      giorgi.media.promptMs = 3 * SECOND; // The browser asks again.
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+      giorgi.call.holdToTalk(false); // To answer the browser.
+      await h.advanceAsync(5 * SECOND);
+      expect(giorgi.call.state).toMatchObject({
+        mic: { on: false, problem: null },
+        pushToTalk: { on: true, holding: false },
+      });
+      expect(mariam.call.state.other).toEqual({ mic: false, camera: false });
+      expect(hears(mariam)).toBeNull();
+
+      giorgi.call.holdToTalk(true);
+      await h.advanceAsync(SECOND);
+      expect(mariam.call.state.other).toEqual({ mic: true, camera: false });
+      expect(hears(mariam)).toBe("giorgi1 microphone");
+    });
   });
 
   describe("without a Watch Party", () => {
