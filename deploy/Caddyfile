@@ -1,0 +1,14 @@
+# Caddy in the self-hosted stack (compose.yaml): HTTPS for DOMAIN in front of
+# the app. For a public domain Caddy gets a Let's Encrypt certificate; for
+# `localhost` it uses its own local CA. reverse_proxy passes WebSocket
+# upgrades (the realtime connection) and the original Host header through,
+# which the realtime route's Origin check compares against.
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The sign-in throttle counts wrong passwords per client address, read from
+	# the first X-Forwarded-For entry. Caddy sets that header to the address it
+	# sees and drops whatever a client sent, as long as no `trusted_proxies` is
+	# configured. Keep it that way, unless another proxy sits in front of Caddy.
+	reverse_proxy app:3000
+}
