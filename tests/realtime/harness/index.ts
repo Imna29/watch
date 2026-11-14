@@ -11,8 +11,14 @@
  * expect(phone.presence.other?.online).toBe(true);
  * laptop.drop(); // the laptop's network silently goes away
  * ```
+ *
+ * A test device is what `createRealtimeDevice` returns (`client`, `presence`,
+ * ...) plus its own clock and network controls. Device-side parts that need
+ * more than the connection (party sync with a fake Source player) can be
+ * built on `device.client` and `device.clock`.
  */
 import type { Viewer } from "../../../models/Viewer";
+import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import { createFakeClock } from "./fakeClock";
 import { createFakeServer, type DeviceTraffic, type Link } from "./fakeNetwork";
@@ -32,6 +38,8 @@ export interface TestDeviceOptions {
 export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly name: string;
   readonly viewer: Viewer;
+  /** This device's own clock (skewed by `clockSkewMs`), on the harness's timeline. */
+  readonly clock: Clock;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
   /** Changes this device's one-way network delay. */
@@ -63,16 +71,18 @@ export function createHarness() {
       const name = `${viewer}${counts[viewer]}`;
       const link: Link = { delayMs: options.delayMs ?? DEFAULT_DELAY_MS, dropped: false };
       const traffic = { name, received: [], connectionAttempts: [] };
+      const deviceClock = clock.skewed(options.clockSkewMs ?? 0);
       const device = createRealtimeDevice({
         url: "ws://watch.test/realtime",
         openSocket: server.socketsFor(viewer, link, traffic),
-        clock: clock.skewed(options.clockSkewMs ?? 0),
+        clock: deviceClock,
       });
       device.client.start();
       return {
         ...device,
         name,
         viewer,
+        clock: deviceClock,
         received: traffic.received,
         connectionAttempts: traffic.connectionAttempts,
         closeSite() {
