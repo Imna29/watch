@@ -25,6 +25,7 @@ per-Viewer playlists and watched-episode tracking.
 | Run the production build | `bun run start` |
 | Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
 | Hash a Viewer's password | `bun run hash-password` |
+| Self-hosted stack up / down | `docker compose up -d --build --wait` / `docker compose down` (see "Self-hosting") |
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
@@ -88,10 +89,56 @@ The coordinator records History through the `HistoryPort` that
 once per Syncable Source with an adapter: a new one needs a fake player that
 speaks its format in `tests/realtime/harness/fakeSourcePlayers.ts`.
 
+## Self-hosting
+`compose.yaml` runs the whole site on one machine (ADR 0003). Its settings
+come from `.env` next to it: the variables in `.env.example`, including the
+"self-hosted stack" section at its end. Services:
+- `app`: the image from `Dockerfile` (the `bun` preset's `.output`). It has no
+  published port: only Caddy reaches it, since the sign-in throttle trusts
+  `X-Forwarded-For`.
+- `migrate`: a one-shot run of the same image that applies `drizzle/`
+  (`scripts/migrate.ts`, bundled as `migrate.mjs`). `app` starts only after it
+  succeeds.
+- `postgres`: data on the `postgres-data` volume, reachable only inside the stack.
+- `caddy`: HTTPS for `DOMAIN` and the realtime WebSocket (`deploy/Caddyfile`).
+  Certificates live on the `caddy-data` volume.
+- `coturn`: the Call's relay (`deploy/turnserver.conf`, started by
+  `deploy/coturn.sh`). It shares `TURN_SECRET` with the app, and the app's
+  `TURN_HOST` defaults to `DOMAIN`.
+
+Run it with `docker compose up -d --build --wait`. Run the same command again
+after pulling changes; it rebuilds the image and applies new migrations. Use
+`docker compose logs -f app` for logs. `docker compose down -v` deletes the
+database.
+
+The VPS needs:
+- Docker Engine with the Compose plugin.
+- A domain whose DNS A record points straight at the VPS, with no CDN proxy
+  in between: browsers reach coturn at that name too.
+- These inbound ports open, and no others:
+  - 80/tcp: certificates and the redirect to HTTPS
+  - 443/tcp and 443/udp: HTTPS and HTTP/3
+  - 3478/udp and 3478/tcp: STUN and TURN
+  - 49160-49200/udp: the relay range
+- `TURN_EXTERNAL_IP` set to its public IPv4 address. If it is left empty,
+  coturn looks the address up as it starts.
+
+To run the stack locally, keep its settings in a separate file such as
+`.env.stack` (gitignored). Use `DOMAIN=localhost` and `TURN_EXTERNAL_IP=127.0.0.1`,
+and if 80, 443 or 3478 are taken, set `HTTP_PORT`, `HTTPS_PORT` and `TURN_PORT`.
+Start it with `docker compose -p watch-local --env-file .env.stack up -d --build --wait`,
+then open `https://localhost:<HTTPS_PORT>` in two browser profiles, one per
+Viewer. Caddy signs `localhost` with its own CA. Trust its root
+(`docker compose ... cp caddy:/data/caddy/pki/authorities/local/root.crt .`)
+or accept the browser's warning. Pages that call TMDB need a real
+`TMDB_API_KEY`.
+
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
 - Point `db:push`, `db:migrate`, `db:studio` and any test data at the local
   Docker Postgres only.
+- Never run `docker compose down -v` against the VPS's stack: it deletes the
+  database and Caddy's certificates.
 
 ## Layout
 - `pages/` routes
