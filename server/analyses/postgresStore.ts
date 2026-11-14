@@ -1,6 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { db as appDb } from "../database/db";
-import { analyses } from "../database/schema";
+import { analyses } from "../database/watch-schema";
 import type { Analysis, AnalysisStore } from "./analyses";
 
 type Database = typeof appDb;
