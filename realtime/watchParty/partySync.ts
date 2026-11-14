@@ -301,8 +301,8 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   /**
    * Loads what the Watch Party plays (its Title or episode, on its Source)
    * unless the player already has it: at first, and again whenever a Viewer
-   * chooses another episode. The new document starts paused, at normal
-   * speed, with no commands on their way.
+   * chooses another episode. The new document starts paused where the
+   * shared state is, at normal speed, with no commands on their way.
    */
   function load(party: WatchPartyState) {
     const playable = playableOf(party);
@@ -312,7 +312,8 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     loadedEpisode = party.episode;
     echoes.clear();
     reportedReadyFor = null;
-    Object.assign(player, { paused: true, position: 0, at: clock.now(), rate: 1 });
+    const startAt = anchorAt(party.anchor, client.serverNow()).position;
+    Object.assign(player, { paused: true, position: startAt, at: clock.now(), rate: 1 });
     if (adapter?.source.id !== party.source) {
       adapter?.destroy();
       adapter = null;
@@ -324,7 +325,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       adapter.on(heard);
     }
     setView({ player: "loading" });
-    adapter.load(playable, anchorAt(party.anchor, client.serverNow()).position);
+    adapter.load(playable, startAt);
   }
 
   function reportReady() {
