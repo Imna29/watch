@@ -8,11 +8,19 @@ const { data: viewer } = useViewer();
 const { mutate: signOut, isPending: isSigningOut } = useSignOut();
 const viewerName = computed(() => (viewer.value ? VIEWER_NAMES[viewer.value] : ""));
 
-const navItems = [
+interface NavItem {
+    to: string;
+    label: string;
+    /** Shown as a badge after the label, in both navs; none when absent. */
+    badge?: string;
+}
+
+const navItems: NavItem[] = [
     { to: "/watch", label: "Home" },
     { to: "/watch/movies", label: "Movies" },
     { to: "/watch/tvs", label: "TV Shows" },
     { to: "/watch/playlist", label: "My lists" },
+    { to: "/watch/analyses", label: "Analyses" },
 ];
 
 const isActiveRoute = (path: string) => route.path === path;
@@ -48,6 +56,7 @@ const isDrawerOpen = ref(false);
                             !isActiveRoute(item.to),
                     }">
                         {{ item.label }}
+                        <Badge v-if="item.badge" :value="item.badge" class="ml-2" />
                     </NuxtLink>
                     <div :class="{
                         'text-color-emphasis': isActiveExplore(),
@@ -82,6 +91,7 @@ const isDrawerOpen = ref(false);
                     !isActiveRoute(item.to),
             }">
                 {{ item.label }}
+                <Badge v-if="item.badge" :value="item.badge" class="ml-2" />
             </NuxtLink>
 
             <div :class="{

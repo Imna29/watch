@@ -3,6 +3,15 @@ import { queryKeys } from '../queryKeys'
 import { watchRepository } from '~/utils/watchRepository'
 
 export const analysisOptions = {
+  /** Every Analysis in list order, with the average Grade (null while none is graded). */
+  list: () =>
+    queryOptions({
+      queryKey: queryKeys.analyses.list(),
+      queryFn: async () => {
+        const { $apiClient } = useNuxtApp()
+        return watchRepository($apiClient).getAnalyses()
+      },
+    }),
   /** The movie's Analysis, or null when it has none. */
   byMovie: (movieId: MaybeRefOrGetter<number>) =>
     queryOptions({
@@ -13,6 +22,10 @@ export const analysisOptions = {
         return analysis
       },
     }),
+}
+
+export function useAnalysisList() {
+  return useQuery(analysisOptions.list())
 }
 
 export function useMovieAnalysis(movieId: MaybeRefOrGetter<number>) {
