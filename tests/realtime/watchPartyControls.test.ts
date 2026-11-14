@@ -10,6 +10,7 @@ const MINUTE = 60 * SECOND;
 
 const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
 const SEVERANCE = { contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" };
+const ARRIVAL = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 329865, name: "Arrival" };
 
 /** The change message `device` shows over the player ("Mariam paused at 1:02:14"); null when none. */
 function message(device: TestDevice) {
@@ -156,6 +157,34 @@ describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %
       expect(giorgi.player?.paused).toBe(false);
       expect(mariam.player).toMatchObject({ ready: true, paused: false, playable: { episode: 3 } });
       expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    });
+  });
+
+  describe("\"Watch together\" during a Watch Party", () => {
+    it("on a different Title ends the Watch Party and invites the other Viewer to the new one", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      giorgi.watchParty.start(ARRIVAL, null);
+      h.advance(2 * SECOND);
+
+      expect(mariam.player).toBeNull();
+      expect(mariam.watchParty.ended).toMatchObject({ title: DUNE, reason: "replaced", by: "giorgi" });
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: ARRIVAL, episode: null });
+      expect(giorgi.watchParty.choice).toBeNull();
+      expect(giorgi.player).toMatchObject({ playable: { kind: "movie", tmdbId: ARRIVAL.tmdbId }, paused: true });
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+    });
+
+    it("on another episode of the same TV show moves both Viewers to it", () => {
+      const { h, giorgi, mariam } = watchingTogether({ title: SEVERANCE, episode: { season: 1, episode: 1 } });
+
+      mariam.watchParty.start(SEVERANCE, { season: 2, episode: 1 });
+      h.advance(10 * SECOND);
+
+      expect(giorgi.watchParty.invite).toBeNull();
+      for (const device of [giorgi, mariam]) {
+        expect(device.player).toMatchObject({ playable: { season: 2, episode: 1 }, paused: false });
+      }
     });
   });
 

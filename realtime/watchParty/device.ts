@@ -50,7 +50,12 @@ export interface DeviceWatchParty {
   readonly choice: StartChoice | null;
   /** The other Viewer ended a Watch Party: what to tell this Viewer, until dismissed. */
   readonly ended: EndedNotice | null;
-  /** "Watch together" on `title` (with `episode`, for a TV show). */
+  /**
+   * "Watch together" on `title` (with `episode`, for a TV show). From the
+   * device that takes part in a Watch Party: another episode of its TV show
+   * moves both Viewers there (`changeEpisode`), and a different Title ends
+   * it and invites the other Viewer to the new one, without asking first.
+   */
   start(title: TitleRef, episode: Episode | null): void;
   /**
    * Joins the invite (or the choice's Watch Party) from this device; or
@@ -149,6 +154,14 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     changed();
   }
 
+  function changeEpisode(episode: Episode) {
+    const current = live();
+    if (!current?.episode || !activeHere()) return;
+    if (current.episode.season === episode.season && current.episode.episode === episode.episode) return;
+    if (current.phase.name === "inviting") send({ title: current.title, episode }, current.id);
+    else client.send({ type: "watchParty:episode", partyId: current.id, episode });
+  }
+
   /**
    * The newest shared state's `seq` heard on this connection. A state that
    * arrives after a newer one is stale and ignored. A new connection may
@@ -209,7 +222,16 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     },
 
     start(title, episode) {
-      send({ title, episode }, null);
+      const current = live();
+      if (!current || !activeHere()) {
+        send({ title, episode }, null);
+        return;
+      }
+      // From the device that takes part: another episode moves both Viewers to it,
+      // while a different Title ends this Watch Party and invites the other Viewer anew.
+      const sameTitle = current.title.tmdbId === title.tmdbId && current.title.contentType === title.contentType;
+      if (!sameTitle) send({ title, episode }, current.id);
+      else if (episode) changeEpisode(episode);
     },
 
     join() {
@@ -252,13 +274,7 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       client.send({ type: "watchParty:playback", partyId, change });
     },
 
-    changeEpisode(episode) {
-      const current = live();
-      if (!current?.episode || !activeHere()) return;
-      if (current.episode.season === episode.season && current.episode.episode === episode.episode) return;
-      if (current.phase.name === "inviting") send({ title: current.title, episode }, current.id);
-      else client.send({ type: "watchParty:episode", partyId: current.id, episode });
-    },
+    changeEpisode,
 
     subscribe(listener) {
       listeners.add(listener);
