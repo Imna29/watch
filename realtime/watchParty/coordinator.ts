@@ -9,6 +9,7 @@ import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
 import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
+import type { DeviceKey } from "../connection/protocol";
 import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
 import type { TitleRef } from "../presence/protocol";
@@ -127,6 +128,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     let party: WatchPartyState | null = null;
     /** The devices whose player has the current Watch Party's Title loaded. */
     let readyDevices = new Set<DeviceId>();
+    /**
+     * The Device (by key) each Viewer takes part from: when it comes back on a
+     * new connection, it takes part again from there (`rejoin`).
+     */
+    let seatKeys: Partial<Record<Viewer, DeviceKey>> = {};
     let seq = 0;
     let partyCount = 0;
 
@@ -157,6 +163,27 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       return current.phase.name === "inviting" && device.viewer === current.starter;
     }
 
+    /** `device` becomes its Viewer's active device: returns its id for `activeDevices`. */
+    function takeSeat(device: Device) {
+      seatKeys[device.viewer] = device.key;
+      return device.id;
+    }
+
+    /**
+     * The Device a Viewer takes part from came back on a new connection
+     * (`device`): it reconnected, or its page reloaded. It takes part again
+     * from there, at the shared position.
+     */
+    function rejoin(device: Device, current: WatchPartyState) {
+      // A reloaded page loads its player anew, and reports when it has.
+      readyDevices.delete(current.activeDevices[device.viewer]!);
+      publish({
+        ...current,
+        ...inStep.rejoined(current, device.viewer),
+        activeDevices: { ...current.activeDevices, [device.viewer]: device.id },
+      });
+    }
+
     /**
      * A Viewer who takes part from one device joins from `device`, which
      * becomes their active device. The device it took over from sees that in
@@ -168,7 +195,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       if (previous === null || previous === device.id) return;
       // The new device's player has yet to load: it reports when it has.
       readyDevices.delete(previous);
-      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: device.id } });
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) } });
     }
 
     /**
@@ -208,6 +235,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
 
     return {
       connected(device) {
+        const seat = party?.activeDevices[device.viewer] ?? null;
+        if (party && seat !== null && seat !== device.id && seatKeys[device.viewer] === device.key) {
+          rejoin(device, party);
+          return;
+        }
         context.send(device.id, { type: "watchParty", party });
       },
 
@@ -235,7 +267,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               Viewer,
               DeviceId | null
             >;
-            activeDevices[from.viewer] = from.id;
+            seatKeys = {};
+            activeDevices[from.viewer] = takeSeat(from);
             readyDevices = new Set();
             publish({
               id: `${now.toString(36)}-${++partyCount}`,
@@ -262,7 +295,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               ...party,
               phase: { name: "countdown", endsAt: null },
               lastChangeBy: from.viewer,
-              activeDevices: { ...party.activeDevices, [from.viewer]: from.id },
+              activeDevices: { ...party.activeDevices, [from.viewer]: takeSeat(from) },
             });
             recordForBoth(party);
             startCountdownWhenReady();

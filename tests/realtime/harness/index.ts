@@ -161,6 +161,7 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
         url: "ws://watch.test/realtime",
         openSocket: server.socketsFor(viewer, link, traffic),
         clock: deviceClock,
+        deviceKey: name,
         call: media,
       });
       device.client.start();

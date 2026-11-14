@@ -150,6 +150,16 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
       else if (Math.abs(behind) > DRIFT_IGNORED_S) catchUp(from, current);
     },
 
+    /**
+     * How the Watch Party changes when `viewer`'s Device comes back on a new
+     * connection: no longer gone, but it has yet to catch up.
+     */
+    rejoined(current: WatchPartyState, viewer: Viewer): Partial<WatchPartyState> {
+      const { phase } = current;
+      if (phase.name !== "waiting" || phase.viewer !== viewer || phase.reason !== "disconnected") return {};
+      return { phase: { ...phase, reason: "behind" } };
+    },
+
     /** Called on every clock tick: waits for a Viewer whose active device has been gone too long. */
     tick() {
       const current = party();

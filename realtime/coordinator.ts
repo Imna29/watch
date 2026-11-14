@@ -13,12 +13,15 @@
  */
 import { z } from "zod";
 import type { Viewer } from "../models/Viewer";
-import { SILENCE_LIMIT_MS, type PingMessage } from "./connection/protocol";
+import { SILENCE_LIMIT_MS, type DeviceKey, type PingMessage } from "./connection/protocol";
 import type { DeviceId, DeviceMessageOf, DeviceMessageType, ServerMessage } from "./protocol";
 
 export interface Device {
+  /** This connection. */
   readonly id: DeviceId;
   readonly viewer: Viewer;
+  /** The Device (browser tab) across its connections: the same after a reconnect or a page reload. */
+  readonly key: DeviceKey;
 }
 
 /** What the transport must do: send a device a message, or close its connection. */
@@ -121,9 +124,9 @@ export function createCoordinator({ now, features: factories }: CoordinatorOptio
   }
 
   return {
-    connected({ id, viewer }) {
+    connected({ id, viewer, key }) {
       if (devices.has(id)) return [];
-      const device: Device = { id, viewer };
+      const device: Device = { id, viewer, key };
       devices.set(id, { device, lastHeardAt: now() });
       context.send(id, { type: "welcome", deviceId: id, viewer, serverTime: now() });
       for (const feature of features) feature.connected?.(device);

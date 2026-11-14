@@ -8,6 +8,7 @@
  * checks the sign-in cookie itself.
  */
 import { isViewer } from "~/models/Viewer";
+import { deviceKeyIn } from "~/realtime/connection/protocol";
 import type { Outgoing } from "~/realtime/coordinator";
 import { createRealtimeCoordinator, TICK_INTERVAL_MS } from "~/realtime/server";
 
@@ -45,13 +46,16 @@ export default defineWebSocketHandler({
     if (!viewer) throw new Response("Sign in first", { status: 401 });
     if (!isFromThisSite(request.headers)) throw new Response("Forbidden", { status: 403 });
     request.context.viewer = viewer;
+    request.context.deviceKey = deviceKeyIn(request.url);
   },
 
   open(peer) {
     const viewer = peer.context.viewer;
     if (!isViewer(viewer)) return peer.close(1008, "Sign in first");
     connections.set(peer.id, peer);
-    carryOut(coordinator.connected({ id: peer.id, viewer }));
+    // A device that sent no key is a Device of its own, for this one connection.
+    const key = typeof peer.context.deviceKey === "string" ? peer.context.deviceKey : peer.id;
+    carryOut(coordinator.connected({ id: peer.id, viewer, key }));
   },
 
   message(peer, message) {

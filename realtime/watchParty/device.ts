@@ -103,8 +103,15 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
   let starting: { title: TitleRef; episode: Episode | null } | null = null;
   /** The Watch Party that was in the way of `starting`. */
   let inTheWay: WatchPartyState | null = null;
-  /** The Watch Party this device last took part in, and the device id it had then. */
-  let tookPart: { partyId: string; deviceId: DeviceId } | null = null;
+  /** The Watch Party this device last took part in. */
+  let tookPartIn: string | null = null;
+  /**
+   * The connection this device had when it heard `party`: the id the shared
+   * state knows it by. A new connection keeps the player going until the
+   * state it brings says otherwise (a Device that reconnected or reloaded
+   * takes part again from its new connection).
+   */
+  let heardOn: DeviceId | null = null;
 
   function changed() {
     for (const listener of [...listeners]) listener();
@@ -127,23 +134,22 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
   function activeHere() {
     const active = activeDevice();
-    return active !== null && active === client.identity?.deviceId;
+    return active !== null && active === heardOn;
   }
 
   function elsewhere() {
     const active = activeDevice();
-    return active !== null && active !== client.identity?.deviceId ? live() : null;
+    return active !== null && active !== heardOn ? live() : null;
   }
 
   /** Remembers the Watch Party this device takes part in, to tell when another device takes it over. */
   function rememberTakingPart() {
-    const identity = client.identity;
-    if (party && identity && activeHere()) tookPart = { partyId: party.id, deviceId: identity.deviceId };
+    if (party && activeHere()) tookPartIn = party.id;
   }
 
   function continuedElsewhere() {
     const current = elsewhere();
-    return !!current && tookPart?.partyId === current.id && tookPart.deviceId === client.identity?.deviceId;
+    return !!current && tookPartIn === current.id;
   }
 
   /** Moves the Watch Party this Viewer takes part in from another device to this one. */
@@ -191,6 +197,7 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       newestSeq = message.party.seq;
     }
     party = message.party;
+    heardOn = client.identity?.deviceId ?? null;
     rememberTakingPart();
     const phase = party?.phase;
     if (party && phase?.name === "ended" && phase.by !== me()) {

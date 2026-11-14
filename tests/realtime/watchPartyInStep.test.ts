@@ -146,5 +146,31 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(giorgi.player).toMatchObject({ paused: true, position: waitingAt });
       expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
     });
+
+    it("rejoins at the shared position once her connection is back, and both resume together", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      const player = mariam.player;
+      mariam.drop();
+      h.advance(20 * SECOND);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      const waitingAt = giorgi.player!.position;
+
+      mariam.restore();
+      // Her device reconnects by itself.
+      const seen = track(h, 30 * SECOND, {
+        giorgiPlaying: () => !giorgi.player!.paused,
+        mariamPlaying: () => !mariam.player!.paused,
+        mariamPlayer: () => mariam.player,
+      });
+
+      // Her player stayed open all along, and took her back to where the Watch Party waited.
+      expect(values(seen.mariamPlayer)).toEqual([player]);
+      expect(values(seen.giorgiPlaying)).toEqual([false, true]);
+      expect(seen.mariamPlaying.at(-1)).toEqual({ at: seen.giorgiPlaying.at(-1)!.at, value: true });
+      expect(giorgi.partySync?.view.waitingFor).toBeNull();
+      const resumedFor = (h.clock.now() - seen.giorgiPlaying.at(-1)!.at) / SECOND;
+      expect(giorgi.player!.position).toBeCloseTo(waitingAt + resumedFor, 0);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+    });
   });
 });

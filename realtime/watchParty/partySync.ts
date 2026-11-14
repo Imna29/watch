@@ -173,8 +173,8 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   let loaded: string | null = null;
   let loadedEpisode: Episode | null = null;
   let loadedSource: SourceId | null = null;
-  /** What this device last told the coordinator about its player (see `reportPlayer`). */
-  let reported: { partyId: string; player: "ready" | "failed" } | null = null;
+  /** What this device last told the coordinator about its player, and on which connection (see `reportPlayer`). */
+  let reported: { partyId: string; player: "ready" | "failed"; on: string | null } | null = null;
   /** The shared state last looked at for a change message, by `seq`. */
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
@@ -396,14 +396,17 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   }
 
   /**
-   * Tells the coordinator, once per Watch Party, that the player is ready,
-   * or that its Source failed (Source fallback then offers the next one).
+   * Tells the coordinator, once per Watch Party (and again on a new
+   * connection: the coordinator knows players by connection), that the
+   * player is ready, or that its Source failed (Source fallback then offers
+   * the next one).
    */
   function reportPlayer() {
     const party = live();
     if (!party || loadedSource === null || view.player === "loading") return;
-    if (reported?.partyId === party.id && reported.player === view.player) return;
-    reported = { partyId: party.id, player: view.player };
+    const on = client.identity?.deviceId ?? null;
+    if (reported?.partyId === party.id && reported.player === view.player && reported.on === on) return;
+    reported = { partyId: party.id, player: view.player, on };
     if (view.player === "ready") watchParty.playerReady(party.id, loadedEpisode, loadedSource);
     else watchParty.playerFailed(party.id, loadedEpisode, loadedSource);
   }
