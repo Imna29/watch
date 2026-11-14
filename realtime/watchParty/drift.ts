@@ -30,6 +30,7 @@ import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
 import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
+import { noTabShare } from "./tabShare";
 
 /** How often party sync reports where its player is. */
 export const POSITION_REPORT_MS = 1000;
@@ -55,6 +56,14 @@ export const DISCONNECT_GRACE_MS = 5000;
 
 /** How long a Watch Party waiting for the other Viewer to join outlasts its starter having no device on the site. */
 export const INVITE_GRACE_MS = 2 * 60_000;
+
+/**
+ * How long a Tab Share outlasts its sharer's active device being gone,
+ * leaving the other Viewer a still picture. Longer than a network drop the
+ * device comes back from: the server notices a silent device after 6 s
+ * (`SILENCE_LIMIT_MS`), and a device retries at most every 10 s.
+ */
+export const TAB_SHARE_GONE_MS = DISCONNECT_GRACE_MS + 25_000;
 
 /**
  * After telling a device to catch up, its reports from before it could have
@@ -191,6 +200,23 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
     }
   }
 
+  /**
+   * `sharer`'s device, which shared its tab, has been gone for
+   * `TAB_SHARE_GONE_MS`: the Tab Share stops, and both wait for them on the
+   * Syncable Source, still paused where the Tab Share left it.
+   */
+  function sharerGone(current: WatchPartyState, sharer: Viewer) {
+    resumeTo = "paused";
+    publish({
+      ...current,
+      ...noTabShare(),
+      phase: { name: "waiting", viewer: sharer, reason: "disconnected" },
+      lastChangeBy: sharer,
+      // The seq `publish` gives this state.
+      lastChange: { kind: "sharer-gone", by: sharer, seq: current.seq + 1 },
+    });
+  }
+
   /** Whether `viewer`'s player, as last reported, is where the waiting Watch Party is. */
   function isThere(viewer: Viewer, current: WatchPartyState) {
     const report = reports.get(viewer);
@@ -273,16 +299,28 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
       for (const device of caughtUpAt.keys()) {
         if (!connected.has(device)) caughtUpAt.delete(device);
       }
-      // A Tab Share stands still anyway, with no Syncable Source player to wait for (`./tabShare.ts`).
-      if (!current || current.mode === "tab-share") return;
+      /** Since when `viewer`'s active device has been gone; null while it is connected. */
+      const awayFrom = (viewer: Viewer) => {
+        const device = current?.activeDevices[viewer] ?? null;
+        if (device === null || connected.has(device)) return null;
+        const since = awaySince.get(device) ?? context.now();
+        awaySince.set(device, since);
+        return since;
+      };
+      if (!current) return;
+      // A Tab Share stands still anyway, with no Syncable Source player to wait for (`./tabShare.ts`),
+      // until nobody could show the tab any more.
+      if (current.mode === "tab-share") {
+        const sharer = current.tabShare?.sharer;
+        const since = sharer ? awayFrom(sharer) : null;
+        if (sharer && since !== null && context.now() - since >= TAB_SHARE_GONE_MS) sharerGone(current, sharer);
+        return;
+      }
       if (current.phase.name === "inviting") return keepInviteWhileStarterIsOn(current);
       starterAway = null;
       for (const viewer of VIEWERS) {
-        const device = current.activeDevices[viewer];
-        if (device === null || connected.has(device)) continue;
-        const since = awaySince.get(device) ?? context.now();
-        awaySince.set(device, since);
-        if (context.now() - since >= DISCONNECT_GRACE_MS) return gone(current, viewer, since);
+        const since = awayFrom(viewer);
+        if (since !== null && context.now() - since >= DISCONNECT_GRACE_MS) return gone(current, viewer, since);
       }
     },
   };

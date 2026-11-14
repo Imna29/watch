@@ -173,7 +173,11 @@ Staying in step (`drift.ts` on the server):
 - A Tab Share is left alone: it stands still anyway, and position reports
   are among the intents it ignores. Its sharer keeps sharing across a
   reconnect (same Device). A reload loses the tab, so the reloaded page stops
-  the Tab Share and both go back to the Syncable Source.
+  the Tab Share and both go back to the Syncable Source. A sharer whose
+  active device has been gone for 30 s (`TAB_SHARE_GONE_MS`) has gone for
+  good: the coordinator stops the Tab Share, tells the other Viewer
+  (`lastChange` "sharer-gone"), and waits for the sharer on the Syncable
+  Source, paused.
 Tab Share (`tabShare.ts` on the server, `tabShareDevice.ts` on the device):
 `watchParty:tabShare` puts the Watch Party in mode `tab-share` (`tabShare`:
 sharer, Source, sound). It stands still, paused, and the coordinator ignores

@@ -191,6 +191,8 @@ export type PlaybackChange =
  * A change `by` made, in the shared state numbered `seq`. "next-cancelled":
  * they cancelled "Next episode in 10s", so both stay at the end of the episode.
  * "tab-share-stopped": they stopped a Tab Share (theirs or the other Viewer's).
+ * "sharer-gone": their device, which shared its tab, was gone so long that
+ * the Tab Share stopped (`TAB_SHARE_GONE_MS` in `./drift.ts`).
  */
 export type WatchPartyChange = (
   | PlaybackChange
@@ -198,6 +200,7 @@ export type WatchPartyChange = (
   | { kind: "source"; source: SourceId }
   | { kind: "next-cancelled" }
   | { kind: "tab-share-stopped" }
+  | { kind: "sharer-gone" }
 ) & { by: Viewer; seq: number };
 
 /**
