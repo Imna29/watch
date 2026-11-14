@@ -231,6 +231,15 @@ The VPS needs:
 - `TURN_EXTERNAL_IP` set to its public IPv4 address. If it is left empty,
   coturn looks the address up as it starts.
 
+Known limits of the Call's relay (follow-ups, not done yet):
+- No TURN over TLS. coturn only listens on 3478 (UDP and TCP), so a network
+  that allows nothing but TLS on 443 cannot reach the relay, and the Call
+  fails there. The fix is a `turns:` listener on 5349 using Caddy's
+  certificate, offered in `server/call/relay.ts` next to the `turn:` URLs.
+- Without `TURN_HOST` and `TURN_SECRET` (development), `GET
+  /api/call/ice-servers` returns no ICE servers at all, not even STUN, so
+  devices only connect directly: on one machine or one local network.
+
 To run the stack locally, keep its settings in a separate file such as
 `.env.stack` (gitignored). Use `DOMAIN=localhost` and `TURN_EXTERNAL_IP=127.0.0.1`,
 and if 80, 443 or 3478 are taken, set `HTTP_PORT`, `HTTPS_PORT` and `TURN_PORT`.
