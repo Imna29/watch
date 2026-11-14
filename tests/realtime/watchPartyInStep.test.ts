@@ -239,6 +239,50 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
     });
   });
 
+  describe("a Viewer whose device is gone", () => {
+    it("takes part again from any other device of hers that connects while she is waited for", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      mariam.closeSite(); // Her laptop's battery dies.
+      h.advance(10 * SECOND);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      const waitingAt = giorgi.player!.position;
+
+      const phone = h.device("mariam");
+      h.advance(15 * SECOND);
+      expect(phone.watchParty.activeHere).toBe(true);
+      expect(giorgi.partySync?.view.waitingFor).toBeNull();
+      expect(phone.player?.paused).toBe(false);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(giorgi.player!.position).toBeGreaterThan(waitingAt);
+      expect(apart(giorgi, phone)).toBeLessThan(0.5);
+    });
+
+    it("leaves it to her whether a device of hers that was open all along takes part", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam");
+      const phone = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(SECOND);
+      laptop.watchParty.join();
+      h.advance(MINUTE);
+
+      laptop.closeSite();
+      h.advance(MINUTE);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      expect(phone.watchParty.activeHere).toBe(false);
+      expect(phone.watchParty.elsewhere).not.toBeNull();
+
+      // "Watch here"
+      phone.watchParty.join();
+      h.advance(15 * SECOND);
+      expect(phone.player?.paused).toBe(false);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(apart(giorgi, phone)).toBeLessThan(0.5);
+    });
+  });
+
   describe("a Viewer who reloads the page", () => {
     it("rejoins at the shared position, and the other Viewer watches on", () => {
       const { h, giorgi, mariam } = watchingTogether();

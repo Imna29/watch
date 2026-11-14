@@ -167,17 +167,27 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     }
 
     /**
-     * The Device a Viewer takes part from came back on a new connection
-     * (`device`): it reconnected, or its page reloaded. It takes part again
-     * from there, at the shared position.
+     * Whether `device`, just connected, takes part in the Watch Party in
+     * place of its Viewer's active device: it is that Device, back on a new
+     * connection (it reconnected, or its page reloaded); or the Watch Party
+     * waits for its Viewer, whose active device is gone.
      */
+    function rejoins(device: Device, current: WatchPartyState) {
+      const seat = current.activeDevices[device.viewer];
+      if (seat === null || seat === device.id) return false;
+      const { phase } = current;
+      const waitedFor = phase.name === "waiting" && phase.viewer === device.viewer && phase.reason === "disconnected";
+      return seatKeys[device.viewer] === device.key || waitedFor;
+    }
+
+    /** `device` takes part again in its Viewer's place, at the shared position. */
     function rejoin(device: Device, current: WatchPartyState) {
       // A reloaded page loads its player anew, and reports when it has.
       readyDevices.delete(current.activeDevices[device.viewer]!);
       publish({
         ...current,
         ...inStep.rejoined(current, device.viewer),
-        activeDevices: { ...current.activeDevices, [device.viewer]: device.id },
+        activeDevices: { ...current.activeDevices, [device.viewer]: takeSeat(device) },
       });
     }
 
@@ -248,12 +258,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
 
     return {
       connected(device) {
-        const seat = party?.activeDevices[device.viewer] ?? null;
-        if (party && seat !== null && seat !== device.id && seatKeys[device.viewer] === device.key) {
-          rejoin(device, party);
-          return;
-        }
-        context.send(device.id, { type: "watchParty", party });
+        if (party && rejoins(device, party)) rejoin(device, party);
+        else context.send(device.id, { type: "watchParty", party });
       },
 
       disconnected(device) {
