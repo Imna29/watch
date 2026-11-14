@@ -99,6 +99,7 @@ function openAddToPlaylistDialog() {
                 </div>
             </div>
         </div>
+        <WatchAnalysis :movie-id="id"></WatchAnalysis>
         <div class="grid grid-cols-1">
             <div v-if="trailers && trailers?.length > 0">
                 <div class="my-4 text-4xl text-center">Trailers</div>

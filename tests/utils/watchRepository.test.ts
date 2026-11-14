@@ -51,6 +51,21 @@ describe("watchRepository", () => {
     });
   });
 
+  it("gets a movie's Analysis", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalysis(550);
+    expect(fetch).toHaveBeenCalledWith("/analyses/550");
+  });
+
+  it("puts an Analysis's text as a JSON body", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.writeAnalysis(550, "Tyler is the narrator.\nThe ending is a breakdown.");
+    expect(fetch).toHaveBeenCalledWith("/analyses/550", {
+      method: "PUT",
+      body: { text: "Tyler is the narrator.\nThe ending is a breakdown." },
+    });
+  });
+
   it("passes the search term as an encoded query parameter", async () => {
     const { fetch, repo } = makeRepo();
     await repo.search("tom & jerry #1");
