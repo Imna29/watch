@@ -32,7 +32,6 @@ const { mutate: gradeAnalysis, isPending: isGrading } = useGradeAnalysis();
 const isWriter = computed(() => viewer.value === ANALYSIS_WRITER);
 const isGrader = computed(() => viewer.value === ANALYSIS_GRADER);
 const draft = ref("");
-const charactersLeft = computed(() => ANALYSIS_TEXT_MAX_LENGTH - draft.value.length);
 
 // The writer may edit or delete his Analysis until it is graded.
 const canChange = computed(() => isWriter.value && analysis.value?.grade === null);
@@ -98,7 +97,6 @@ function confirmDelete() {
 
 const gradeDraft = ref<number | null>(null);
 const remarkDraft = ref("");
-const remarkCharactersLeft = computed(() => GRADE_REMARK_MAX_LENGTH - remarkDraft.value.length);
 // The grader's form starts from the Grade as stored, and follows it when it changes.
 watch(
     analysis,
@@ -173,41 +171,26 @@ function saveGrade() {
                 <SelectButton v-model="gradeDraft" :options="GRADES" :allow-empty="false"
                     aria-labelledby="analysis-grade-label" class="flex flex-wrap" />
                 <label for="analysis-remark" class="text-muted-color mt-2">Remark (optional)</label>
-                <Textarea id="analysis-remark" v-model="remarkDraft" :maxlength="GRADE_REMARK_MAX_LENGTH" rows="3"
-                    auto-resize class="w-full" />
-                <div class="flex items-center justify-between gap-2">
-                    <span class="text-sm text-muted-color" aria-live="polite">
-                        {{ remarkCharactersLeft }} characters left
-                    </span>
+                <WatchCountedTextarea id="analysis-remark" v-model="remarkDraft" :maxlength="GRADE_REMARK_MAX_LENGTH"
+                    :rows="3">
                     <Button type="submit" label="Save" :loading="isGrading" :disabled="gradeDraft === null" />
-                </div>
+                </WatchCountedTextarea>
             </form>
 
-            <div v-else-if="analysis.grade !== null" class="mt-6 flex flex-col gap-2">
-                <p>
-                    <span class="text-muted-color">{{ VIEWER_NAMES[ANALYSIS_GRADER] }}'s Grade:</span>
-                    <strong class="text-2xl ml-2">{{ analysis.grade }}</strong>
-                    <span class="text-muted-color"> / {{ GRADE_MAX }}</span>
-                </p>
-                <p v-if="analysis.remark" class="whitespace-pre-wrap break-words">{{ analysis.remark }}</p>
-            </div>
+            <WatchAnalysisGrade v-else-if="analysis.grade !== null" :grade="analysis.grade" :remark="analysis.remark"
+                class="mt-6" />
         </template>
         <form v-else class="flex flex-col gap-2" @submit.prevent="submit">
             <label for="analysis-text" class="text-muted-color">
                 How did you understand this movie?
             </label>
-            <Textarea id="analysis-text" v-model="draft" :maxlength="ANALYSIS_TEXT_MAX_LENGTH" rows="8"
-                auto-resize class="w-full" />
-            <div class="flex items-center justify-between gap-2">
-                <span class="text-sm text-muted-color" aria-live="polite">
-                    {{ charactersLeft }} characters left
-                </span>
+            <WatchCountedTextarea id="analysis-text" v-model="draft" :maxlength="ANALYSIS_TEXT_MAX_LENGTH" :rows="8">
                 <div class="flex gap-2">
                     <Button v-if="isEditing" label="Cancel" severity="secondary" text @click="stopEditing" />
                     <Button type="submit" :label="isEditing ? 'Save' : 'Submit'" :loading="isWriting"
                         :disabled="!draft.trim()" />
                 </div>
-            </div>
+            </WatchCountedTextarea>
         </form>
     </section>
 </template>
