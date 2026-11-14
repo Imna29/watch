@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
-import { createHarness, SECOND, syncableSourcesUnderTest, type Harness } from "./harness";
+import { createHarness, SECOND, syncableSourcesUnderTest, type Harness, type TestDevice } from "./harness";
 
 const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
 const SEVERANCE = { contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" };
@@ -227,6 +227,126 @@ describe.each(syncableSourcesUnderTest())("a Watch Party on %s", (source) => {
         position: 0,
       });
       expect(mariam.partySync?.view.waitingFor).toBe("giorgi");
+    });
+  });
+
+  describe("moving to another device", () => {
+    /** Giorgi and Mariam (on `mariam`) watch Dune together for `ms`. */
+    function watchingTogether(h: Harness, giorgi: TestDevice, mariam: TestDevice, ms = 60 * SECOND) {
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      mariam.watchParty.join();
+      h.advance(ms);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+    }
+
+    it("takes the Watch Party over on the device the Viewer joins from, at the shared position", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam");
+      const phone = h.device("mariam");
+      h.advance(SECOND);
+      watchingTogether(h, giorgi, laptop);
+      expect(phone.player).toBeNull();
+
+      phone.watchParty.join();
+      h.advance(5 * SECOND);
+
+      expect(laptop.player).toBeNull();
+      expect(laptop.watchParty.continuedElsewhere).toBe(true);
+      expect(phone.watchParty.continuedElsewhere).toBe(false);
+      expect(phone.player).toMatchObject({ playable: { kind: "movie", tmdbId: DUNE.tmdbId }, paused: false });
+      expect(phone.player!.position).toBeGreaterThan(60);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+    });
+
+    it("interrupts the other Viewer's playback at most by a brief resync", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam");
+      const phone = h.device("mariam", { player: { loadMs: 4 * SECOND } });
+      h.advance(SECOND);
+      watchingTogether(h, giorgi, laptop);
+      const before = giorgi.player!.position;
+
+      phone.watchParty.join();
+      h.advance(10 * SECOND);
+
+      // Giorgi watched on, losing at most a couple of seconds to a resync.
+      expect(giorgi.player!.position - before).toBeGreaterThan(8);
+      expect(giorgi.player?.paused).toBe(false);
+      expect(phone.player?.paused).toBe(false);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+    });
+
+    it("ignores what the device it moved away from still sends", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam", { delayMs: 2 * SECOND });
+      const phone = h.device("mariam");
+      h.advance(5 * SECOND);
+      watchingTogether(h, giorgi, laptop);
+
+      phone.watchParty.join();
+      h.advance(SECOND);
+      // The laptop has not heard yet that the phone took over, and Mariam closes the player there.
+      expect(laptop.player?.paused).toBe(false);
+      laptop.watchParty.cancel();
+      h.advance(10 * SECOND);
+
+      expect(giorgi.watchParty.ended).toBeNull();
+      expect(giorgi.player?.paused).toBe(false);
+      expect(phone.player?.paused).toBe(false);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+      expect(laptop.player).toBeNull();
+      expect(laptop.watchParty.continuedElsewhere).toBe(true);
+    });
+
+    it("can switch back to the first device", () => {
+      const h = setUp();
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam");
+      const phone = h.device("mariam");
+      h.advance(SECOND);
+      watchingTogether(h, giorgi, laptop);
+      phone.watchParty.join();
+      h.advance(30 * SECOND);
+
+      laptop.watchParty.join();
+      h.advance(5 * SECOND);
+
+      expect(phone.player).toBeNull();
+      expect(phone.watchParty.continuedElsewhere).toBe(true);
+      expect(laptop.watchParty.continuedElsewhere).toBe(false);
+      expect(laptop.player?.paused).toBe(false);
+      expect(laptop.player!.position).toBeGreaterThan(90);
+      expect(laptop.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+    });
+
+    it("counts down only once the player of the device switched back to has loaded again", () => {
+      const h = setUp();
+      const laptop = h.device("giorgi", { player: { loadMs: 8 * SECOND } });
+      const phone = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(10 * SECOND); // The laptop's player has loaded.
+      phone.watchParty.join();
+      h.advance(SECOND);
+      laptop.watchParty.join(); // Back to the laptop, which loads its player again.
+      h.advance(SECOND);
+
+      mariam.watchParty.join();
+      h.advance(4 * SECOND);
+      expect(mariam.partySync?.view).toMatchObject({ player: "ready", gettingReady: true, countdown: null });
+      expect(mariam.player?.paused).toBe(true);
+
+      h.advance(8 * SECOND);
+      expect(laptop.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(laptop.player!.position).toBeLessThan(5);
+      expect(mariam.player!.position).toBeCloseTo(laptop.player!.position, 1);
     });
   });
 

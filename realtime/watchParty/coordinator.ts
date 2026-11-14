@@ -18,6 +18,7 @@ import type {
   JoinWatchPartyMessage,
   PlayerStatusMessage,
   StartWatchPartyMessage,
+  TakeOverWatchPartyMessage,
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
@@ -126,6 +127,20 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       return current.phase.name === "inviting" && device.viewer === current.starter;
     }
 
+    /**
+     * `device` joins from another device than the one its Viewer takes part
+     * from, and becomes their active device. The device it took over from
+     * sees that in the shared state and stops its player. Playback goes on
+     * undisturbed: the new device's player starts at the shared position.
+     */
+    function takeOver(device: Device, current: WatchPartyState) {
+      const previous = current.activeDevices[device.viewer];
+      if (previous === null || previous === device.id) return;
+      // The new device's player has yet to load: it reports when it has.
+      readyDevices.delete(previous);
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: device.id } });
+    }
+
     /** Starts the 3-2-1 once both Viewers' players have loaded the Title. */
     function startCountdownWhenReady() {
       if (party?.phase.name !== "countdown" || party.phase.endsAt !== null) return;
@@ -196,6 +211,13 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             });
             recordForBoth(party);
             startCountdownWhenReady();
+          },
+        },
+
+        "watchParty:takeOver": {
+          schema: partyIntentSchema("watchParty:takeOver") satisfies z.ZodType<TakeOverWatchPartyMessage>,
+          handle(from, { partyId }) {
+            if (party?.id === partyId) takeOver(from, party);
           },
         },
 
