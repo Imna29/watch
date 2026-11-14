@@ -109,6 +109,19 @@ watch(chosenSource, (source) => {
     watchParty.switchSource(source);
 });
 
+/**
+ * Why the Watch Party waits for the other Viewer. One whose device went away is waited for from
+ * where they left (so this player went back there): they miss nothing while they are gone.
+ */
+const waitingNote = computed(() => {
+    const { phase } = party.value;
+    if (phase.name !== "waiting") return null;
+    const name = VIEWER_NAMES[phase.viewer];
+    return phase.reason === "disconnected"
+        ? `${name}'s connection dropped. You'll both go on from where ${name} left off, so ${name} misses nothing.`
+        : `${name}'s player fell behind. It plays on up to here, then you both go on together.`;
+});
+
 /** The mini-player's one line: what the Watch Party is doing, or waits for this Viewer to do in the player. */
 const miniStatus = computed(() => {
     const { left, viewer } = watchParty.state.value;
@@ -175,6 +188,7 @@ const miniStatus = computed(() => {
             <div v-else-if="view.waitingFor"
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4">
                 <span class="text-xl">Waiting for {{ VIEWER_NAMES[view.waitingFor] }}…</span>
+                <span v-if="waitingNote" class="max-w-md text-center text-muted-color">{{ waitingNote }}</span>
                 <Button v-if="party.phase.name === 'inviting'" severity="secondary" @click="watchParty.cancel()">
                     Cancel
                 </Button>
