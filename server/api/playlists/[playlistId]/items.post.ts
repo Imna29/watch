@@ -1,25 +1,10 @@
-import { watchPlaylistItems } from "../../../database/watch-schema";
-import { db } from "../../../database/db";
-
 export default defineEventHandler(async (event) => {
   const viewer = requireViewer(event);
   const { playlistId } = await getValidatedRouterParams(event, playlistParamsSchema.parse);
   const { contentId, contentType } = await readValidatedBody(event, addPlaylistItemBodySchema.parse);
   await requireOwnedPlaylist(playlistId, viewer);
 
-  await db.insert(watchPlaylistItems)
-    .values({
-      playlistId,
-      contentType,
-      contentId,
-      watchedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [watchPlaylistItems.playlistId, watchPlaylistItems.contentType, watchPlaylistItems.contentId],
-      set: {
-        watchedAt: new Date(),
-      },
-    });
+  await addPlaylistItem(playlistId, contentType, contentId);
 
   return { success: true };
 });

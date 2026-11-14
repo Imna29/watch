@@ -80,6 +80,9 @@ function openAddToPlaylistDialog() {
                     <div class="mt-4">{{ movieData.overview }}</div>
                     <div class="mt-4 flex gap-2 place-items-center">
                         <Button class="py-5 px-5 text-lg" @click="isPlayerOpen = !isPlayerOpen">Watch Now</Button>
+                        <WatchTogetherButton
+                            :title="{ contentType: WatchPlaylistItemType.MOVIE, tmdbId: id, name: movieData.title }"
+                            :episode="null"></WatchTogetherButton>
                         <Button class="py-5 px-5 text-lg" severity="secondary" @click="
                             saveForLater(
                                 movieData.title,

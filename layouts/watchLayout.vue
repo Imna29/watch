@@ -2,12 +2,12 @@
 const watchStore = useWatchStore();
 // Every signed-in page uses this layout: hold the realtime connection from here.
 useRealtime();
-
-
+// The Watch Party follows the Viewer from page to page.
+const watchParty = useWatchParty();
 </script>
 
 <template>
-    <div class="md:mx-auto md:max-w-[1600px] lg:px-4 sm:px-4 md:px-4 px-2"> 
+    <div class="md:mx-auto md:max-w-[1600px] lg:px-4 sm:px-4 md:px-4 px-2">
         <LazyWatchHeader></LazyWatchHeader>
         <div class="pb-2 relative">
             <div
@@ -20,6 +20,9 @@ useRealtime();
                 <slot />
             </div>
         </div>
+        <WatchPartyPlayer v-if="watchParty.state.value.activeHere"
+            :key="watchParty.state.value.party?.id"></WatchPartyPlayer>
+        <WatchPartyBanner></WatchPartyBanner>
         <!-- The Call lives here, not in a page, so browsing and the player never drop it. -->
         <WatchCall></WatchCall>
     </div>

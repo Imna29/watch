@@ -1,0 +1,317 @@
+/**
+ * Fake Source players for seam 1: what runs inside the Watch Party player's
+ * iframe. Each one simulates a video on the fake clock and speaks its
+ * Syncable Source's documented `postMessage` format (its "dialect"), so the
+ * real adapters are tested against the format, not against themselves.
+ *
+ * Adding a Syncable Source: write its dialect below and list it in
+ * `DIALECTS`. Every Source with an adapter must have one; the Watch Party
+ * scenarios then run on it too.
+ */
+import type { Clock } from "../../../realtime/clock";
+import type { PlayerFrame } from "../../../realtime/watchParty/sources/adapter";
+import type { AdaptedSourceId } from "../../../realtime/watchParty/sources";
+import { getSource, type Playable, type SourceId } from "../../../utils/sources";
+
+export interface FakePlayerOptions {
+  /** How long the player takes to find a stream and say it is ready. */
+  loadMs?: number;
+  /** No server of the Source has the Title: the player never gets ready. */
+  unavailable?: boolean;
+}
+
+/** A Source's player, as a test sees it. */
+export interface FakeSourcePlayer {
+  readonly sourceId: SourceId;
+  /** What the embed URL asked to play. */
+  readonly playable: Playable;
+  readonly ready: boolean;
+  readonly paused: boolean;
+  /** Seconds into the Title, now. */
+  readonly position: number;
+  readonly rate: number;
+  /**
+   * Posts this Source's "ready" message from `origin` instead of the Source's
+   * own: what a page the iframe was sent to (an ad, say) could post.
+   */
+  postReadyFrom(origin: string): void;
+}
+
+/** The Watch Party player's iframe, holding at most one fake player at a time. */
+export interface FakeFrame extends PlayerFrame {
+  /** The player in the frame now; null before anything loaded and after `remove()`. */
+  readonly player: FakeSourcePlayer | null;
+  /** The iframe is removed from the page. */
+  remove(): void;
+}
+
+type VideoEvent = "ready" | "play" | "pause" | "seeking" | "seeked" | "timeupdate" | "ratechange" | "ended";
+
+/** The simulated `<video>` inside a fake player. */
+interface FakeVideo {
+  readonly paused: boolean;
+  readonly position: number;
+  readonly rate: number;
+  readonly duration: number;
+  play(): void;
+  pause(): void;
+  seek(position: number): void;
+  setRate(rate: number): void;
+}
+
+/** How one Syncable Source's player talks. */
+interface Dialect {
+  /** What the embed URL asks for. */
+  parseUrl(url: URL): { playable: Playable; startAt: number; autoplay: boolean };
+  /** Handles a message from the site once the player is ready; `reply` posts an answer. */
+  receive(data: unknown, video: FakeVideo, reply: (data: unknown) => void): void;
+  /** The message the player posts for `event`; null when this Source posts none. */
+  message(event: VideoEvent, video: FakeVideo): unknown;
+}
+
+/** CineSrc, after https://cinesrc.st/docs (November 2026). */
+const cinesrc: Dialect = {
+  parseUrl(url) {
+    const [, , kind, id] = url.pathname.split("/"); // /embed/{movie|tv}/{id}
+    const tmdbId = Number(id);
+    const playable: Playable =
+      kind === "movie"
+        ? { kind: "movie", tmdbId }
+        : {
+            kind: "episode",
+            tmdbId,
+            season: Number(url.searchParams.get("s") ?? 1),
+            episode: Number(url.searchParams.get("e") ?? 1),
+          };
+    return {
+      playable,
+      startAt: Number.parseFloat(url.searchParams.get("t") ?? "0") || 0,
+      autoplay: url.searchParams.get("autoplay") !== "false",
+    };
+  },
+
+  receive(data, video, reply) {
+    const message = data as { type?: unknown; command?: unknown; args?: unknown[] };
+    if (message?.type !== "cinesrc:command") return;
+    const args = message.args ?? [];
+    switch (message.command) {
+      case "play":
+        return video.play();
+      case "pause":
+        return video.pause();
+      case "seek":
+        return video.seek(Number(args[0]));
+      case "setPlaybackRate":
+        return video.setRate(Number(args[0]));
+      case "getCurrentTime":
+        return reply({ type: "cinesrc:response", command: "getCurrentTime", result: video.position });
+      case "getPaused":
+        return reply({ type: "cinesrc:response", command: "getPaused", result: video.paused });
+      case "getPlaybackRate":
+        return reply({ type: "cinesrc:response", command: "getPlaybackRate", result: video.rate });
+      case "getDuration":
+        return reply({ type: "cinesrc:response", command: "getDuration", result: video.duration });
+    }
+  },
+
+  message(event, video) {
+    const type = `cinesrc:${event}`;
+    switch (event) {
+      case "seeking":
+      case "seeked":
+      case "timeupdate":
+        return { type, currentTime: video.position, duration: video.duration };
+      case "ratechange":
+        return { type, playbackRate: video.rate };
+      default:
+        return { type };
+    }
+  },
+};
+
+/** Every Syncable Source with an adapter has a fake player here. */
+const DIALECTS: Record<AdaptedSourceId, Dialect> = { cinesrc };
+
+/** How often a playing video fires `timeupdate` (Chrome: about 4 Hz). */
+const TIMEUPDATE_MS = 250;
+const MOVIE_SECONDS = 2.5 * 3600;
+const EPISODE_SECONDS = 50 * 60;
+const DEFAULT_LOAD_MS = 1500;
+
+/** The iframe of a Watch Party player on a device whose clock is `clock`. */
+export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): FakeFrame {
+  const listeners = new Set<(origin: string, data: unknown) => void>();
+  let current: { player: FakeSourcePlayer; receive(data: unknown, targetOrigin: string): void; stop(): void } | null =
+    null;
+
+  /** postMessage is asynchronous, and the receiver gets a structured clone. */
+  function later(deliver: () => void) {
+    clock.setTimeout(deliver, 0);
+  }
+
+  function open(url: URL) {
+    const source = Object.entries(DIALECTS).find(([id]) => getSource(id as SourceId).origins.includes(url.origin));
+    if (!source) throw new Error(`No fake player for ${url.origin}`);
+    const [sourceId, dialect] = source as [SourceId, Dialect];
+    const { playable, startAt, autoplay } = dialect.parseUrl(url);
+    const duration = playable.kind === "movie" ? MOVIE_SECONDS : EPISODE_SECONDS;
+    let ready = false;
+    let stopped = false;
+    let paused = true;
+    let rate = 1;
+    // The position is `base` at `since`, and moves on from there while playing.
+    let base = startAt;
+    let since = clock.now();
+    let ticker: unknown = null;
+    let loading: unknown = null;
+
+    function postToSite(origin: string, data: unknown) {
+      if (data === null) return;
+      const copy = structuredClone(data);
+      later(() => {
+        if (current?.player !== player) return;
+        for (const listener of [...listeners]) listener(origin, copy);
+      });
+    }
+
+    function post(event: VideoEvent) {
+      postToSite(url.origin, dialect.message(event, video));
+    }
+
+    function settle() {
+      base = video.position;
+      since = clock.now();
+    }
+
+    function tick() {
+      ticker = clock.setTimeout(() => {
+        post("timeupdate");
+        tick();
+      }, TIMEUPDATE_MS);
+    }
+
+    function stopTicking() {
+      if (ticker !== null) clock.clearTimeout(ticker);
+      ticker = null;
+    }
+
+    const video: FakeVideo = {
+      get paused() {
+        return paused;
+      },
+      get position() {
+        const elapsed = paused ? 0 : ((clock.now() - since) / 1000) * rate;
+        return Math.min(duration, base + elapsed);
+      },
+      get rate() {
+        return rate;
+      },
+      duration,
+      play() {
+        if (!paused) return;
+        settle();
+        paused = false;
+        post("play");
+        tick();
+      },
+      pause() {
+        if (paused) return;
+        settle();
+        paused = true;
+        stopTicking();
+        post("pause");
+      },
+      seek(position) {
+        if (!Number.isFinite(position)) return;
+        post("seeking");
+        base = Math.max(0, Math.min(duration, position));
+        since = clock.now();
+        post("seeked");
+      },
+      setRate(next) {
+        if (!Number.isFinite(next) || next <= 0) return;
+        settle();
+        rate = next;
+        post("ratechange");
+      },
+    };
+
+    const player: FakeSourcePlayer = {
+      sourceId,
+      playable,
+      get ready() {
+        return ready;
+      },
+      get paused() {
+        return paused;
+      },
+      get position() {
+        return video.position;
+      },
+      get rate() {
+        return rate;
+      },
+      postReadyFrom(origin) {
+        postToSite(origin, dialect.message("ready", video));
+      },
+    };
+
+    if (!options.unavailable) {
+      loading = clock.setTimeout(() => {
+        ready = true;
+        settle();
+        post("ready");
+        if (autoplay) video.play();
+      }, options.loadMs ?? DEFAULT_LOAD_MS);
+    }
+
+    return {
+      player,
+      receive(data: unknown, targetOrigin: string) {
+        if (stopped || !ready) return; // The players only listen once ready.
+        if (targetOrigin !== "*" && targetOrigin !== url.origin) return;
+        dialect.receive(data, video, (answer) => postToSite(url.origin, answer));
+      },
+      stop() {
+        stopped = true;
+        stopTicking();
+        if (loading !== null) clock.clearTimeout(loading);
+      },
+    };
+  }
+
+  return {
+    get player() {
+      return current?.player ?? null;
+    },
+
+    load(url) {
+      current?.stop();
+      current = open(new URL(url));
+    },
+
+    post(message, targetOrigin) {
+      const target = current;
+      const copy = structuredClone(message);
+      later(() => {
+        if (current === target) target?.receive(copy, targetOrigin);
+      });
+    },
+
+    onMessage(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+
+    remove() {
+      current?.stop();
+      current = null;
+      listeners.clear();
+    },
+  };
+}
+
+/** The Syncable Sources that have a fake player, i.e. every one with an adapter. */
+export function fakePlayerSources(): AdaptedSourceId[] {
+  return Object.keys(DIALECTS) as AdaptedSourceId[];
+}

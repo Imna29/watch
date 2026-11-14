@@ -13,20 +13,44 @@
  * ```
  *
  * A test device is what `createRealtimeDevice` returns (`client`, `presence`,
- * `call`, ...) plus its own clock and network controls, and its fake browser
- * media (`media`: microphone, camera, peer connections). Device-side parts
- * that need more than the connection (party sync with a fake Source player)
- * can be built on `device.client` and `device.clock`.
+ * `watchParty`, `call`, ...) plus its own clock and network controls, and
+ * its fake browser media for the Call (`media`: microphone, camera, peer
+ * connections). Code that awaits between timers (the Call's media and peer
+ * connections) needs `await h.advanceAsync(ms)`, which lets promises settle
+ * on the way.
  *
- * Code that awaits between timers (the Call's media and peer connections)
- * needs `await h.advanceAsync(ms)`, which lets promises settle on the way.
+ * While the
+ * device takes part in a Watch Party it shows the Watch Party player, as the
+ * app's layout does: real party sync driving a fake Source player
+ * (`device.partySync`, `device.player`).
+ *
+ * Watch Party scenarios run once per Syncable Source:
+ *
+ * ```ts
+ * describe.each(syncableSourcesUnderTest())("on %s", (source) => {
+ *   const h = createHarness({ syncableSource: source });
+ *   const giorgi = h.device("giorgi");
+ *   const mariam = h.device("mariam", { player: { loadMs: 5 * SECOND } });
+ *   ...
+ *   expect(mariam.player?.position).toBeCloseTo(giorgi.player!.position, 1);
+ * ```
  */
 import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
+import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
+import { WATCH_PARTY_SOURCES, type AdaptedSourceId } from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
+import { createFakeHistory } from "./fakeHistory";
 import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
 import { createFakeServer, type DeviceTraffic, type Link } from "./fakeNetwork";
+import {
+  createFakeFrame,
+  fakePlayerSources,
+  type FakeFrame,
+  type FakePlayerOptions,
+  type FakeSourcePlayer,
+} from "./fakeSourcePlayers";
 
 export const SECOND = 1000;
 
@@ -38,6 +62,8 @@ export interface TestDeviceOptions {
   clockSkewMs?: number;
   /** One-way network delay, in milliseconds. */
   delayMs?: number;
+  /** How the Source's player behaves on this device in a Watch Party. */
+  player?: FakePlayerOptions;
 }
 
 export interface TestDevice extends RealtimeDevice, DeviceTraffic {
@@ -45,6 +71,10 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly viewer: Viewer;
   /** This device's own clock (skewed by `clockSkewMs`), on the harness's timeline. */
   readonly clock: Clock;
+  /** Party sync, while this device shows the Watch Party player; null otherwise. */
+  readonly partySync: PartySync | null;
+  /** The Source's player in the Watch Party player, once it loaded something; null otherwise. */
+  readonly player: FakeSourcePlayer | null;
   /** This device's fake browser media: what its microphone and camera allow, and its peer connections. */
   readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
@@ -57,9 +87,30 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   restore(): void;
 }
 
-export function createHarness() {
+/**
+ * The Syncable Sources every Watch Party scenario runs on, once each:
+ * `describe.each(syncableSourcesUnderTest())(..., (source) => createHarness({ syncableSource: source }))`.
+ */
+export function syncableSourcesUnderTest(): AdaptedSourceId[] {
+  const faked = fakePlayerSources();
+  const missing = WATCH_PARTY_SOURCES.filter((source) => !faked.includes(source));
+  if (missing.length > 0) {
+    throw new Error(`Add a fake player for ${missing.join(", ")} in tests/realtime/harness/fakeSourcePlayers.ts`);
+  }
+  return [...WATCH_PARTY_SOURCES];
+}
+
+export interface HarnessOptions {
+  /** The Syncable Source Watch Parties use. */
+  syncableSource?: AdaptedSourceId;
+}
+
+export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {}) {
   const clock = createFakeClock();
-  const server = createFakeServer(clock);
+  const history = createFakeHistory();
+  const server = createFakeServer(clock, {
+    watchParty: { sources: [syncableSource], history },
+  });
   const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};
 
@@ -67,6 +118,8 @@ export function createHarness() {
     clock,
     /** The server process: `stop()` and `start()` it to simulate a restart. */
     server,
+    /** What the server recorded in the Viewers' History and episode progress. */
+    history,
 
     /** Moves time forward; every device and the server act on the way. */
     advance(ms: number) {
@@ -93,12 +146,38 @@ export function createHarness() {
         call: media,
       });
       device.client.start();
+
+      // The Watch Party player, shown while this device takes part (layouts/watchLayout.vue).
+      let partyPlayer: { frame: FakeFrame; partySync: PartySync } | null = null;
+      device.watchParty.subscribe(() => {
+        if (device.watchParty.activeHere && !partyPlayer) {
+          const frame = createFakeFrame(deviceClock, options.player);
+          const partySync = createPartySync({
+            watchParty: device.watchParty,
+            client: device.client,
+            clock: deviceClock,
+            frame,
+          });
+          partyPlayer = { frame, partySync };
+        } else if (!device.watchParty.activeHere && partyPlayer) {
+          partyPlayer.partySync.destroy();
+          partyPlayer.frame.remove();
+          partyPlayer = null;
+        }
+      });
+
       return {
         ...device,
         name,
         viewer,
         clock: deviceClock,
         media,
+        get partySync() {
+          return partyPlayer?.partySync ?? null;
+        },
+        get player() {
+          return partyPlayer?.frame.player ?? null;
+        },
         received: traffic.received,
         connectionAttempts: traffic.connectionAttempts,
         closeSite() {

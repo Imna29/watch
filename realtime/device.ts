@@ -8,6 +8,7 @@ import { createDeviceCall } from "./call/device";
 import type { CallPlatform } from "./call/platform";
 import { createDeviceClient, type DeviceClientOptions } from "./deviceClient";
 import { createDevicePresence } from "./presence/device";
+import { createDeviceWatchParty } from "./watchParty/device";
 
 export interface RealtimeDeviceOptions extends DeviceClientOptions {
   /** The browser's media and WebRTC, for the Call. */
@@ -19,6 +20,7 @@ export function createRealtimeDevice({ call, ...options }: RealtimeDeviceOptions
   return {
     client,
     presence: createDevicePresence(client),
+    watchParty: createDeviceWatchParty(client),
     call: createDeviceCall(client, call, options.clock),
   };
 }

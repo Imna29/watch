@@ -9,6 +9,7 @@
 import type { CallDeviceMessage, CallServerMessage } from "./call/protocol";
 import type { ConnectionDeviceMessage, ConnectionServerMessage } from "./connection/protocol";
 import type { PresenceDeviceMessage, PresenceServerMessage } from "./presence/protocol";
+import type { WatchPartyDeviceMessage, WatchPartyServerMessage } from "./watchParty/protocol";
 
 export type { DeviceId } from "./connection/protocol";
 
@@ -16,12 +17,14 @@ export type { DeviceId } from "./connection/protocol";
 export type DeviceMessage =
   | ConnectionDeviceMessage
   | PresenceDeviceMessage
+  | WatchPartyDeviceMessage
   | CallDeviceMessage;
 
 /** Everything the server may send a device. */
 export type ServerMessage =
   | ConnectionServerMessage
   | PresenceServerMessage
+  | WatchPartyServerMessage
   | CallServerMessage;
 
 export type DeviceMessageType = DeviceMessage["type"];
