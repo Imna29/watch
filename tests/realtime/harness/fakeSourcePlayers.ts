@@ -29,6 +29,8 @@ export interface FakePlayerOptions {
   unavailable?: ForSources;
   /** The Source is down: its player never loads and never says a thing. */
   hangs?: ForSources;
+  /** The browser does not let the player start on its own: it waits, paused, for a command. */
+  noAutoplay?: boolean;
   /**
    * How long a seek takes to buffer: the video stands still at the new
    * position meanwhile, and "seeked" comes only after it. Default: at once.
@@ -458,7 +460,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         ready = true;
         settle();
         post("ready");
-        if (autoplay) video.play();
+        if (autoplay && !options.noAutoplay) video.play();
       }, options.loadMs ?? DEFAULT_LOAD_MS);
     }
 
