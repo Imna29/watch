@@ -8,9 +8,14 @@
  * player should be at the report's server time:
  * - under `DRIFT_IGNORED_S` off, nothing happens;
  * - further off, the device is told to catch up (`watchParty:catchUp`): its
- *   player moves to where the shared state is now.
+ *   player moves to where the shared state is now;
+ * - more than `DRIFT_LIMIT_S` behind, or stalled: every player pauses where
+ *   the Watch Party is, in the "waiting" phase. The Viewer who fell behind
+ *   plays on up to there, so nobody misses anything, and once every player
+ *   is there, all of them start again at one moment, `RESUME_DELAY_MS` on.
  */
 import { z } from "zod";
+import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
 import { anchorAt, type PositionMessage, type WatchPartyState } from "./protocol";
@@ -20,6 +25,15 @@ export const POSITION_REPORT_MS = 1000;
 
 /** A player this close to the shared state is in step; further off, it is moved. */
 export const DRIFT_IGNORED_S = 0.5;
+
+/** A player further behind than this makes everyone wait for it. */
+export const DRIFT_LIMIT_S = 2;
+
+/**
+ * How far ahead of the moment a waiting Watch Party resumes the players
+ * start, so the news reaches every device first and they all start together.
+ */
+export const RESUME_DELAY_MS = 1000;
 
 /** After telling a device to catch up, give it this long before telling it again. */
 const CATCH_UP_COOLDOWN_MS = 3000;
@@ -33,18 +47,24 @@ export const positionSchema = z.object({
   seq: z.number().int().min(0),
   position: z.number().finite().min(0).max(MAX_POSITION_S),
   serverTime: z.number().finite(),
-  blocked: z.boolean(),
+  stalled: z.boolean(),
 }) satisfies z.ZodType<PositionMessage>;
 
 export interface DriftOptions {
   context: CoordinatorContext;
   /** The Watch Party now; null when there is none. */
   party(): WatchPartyState | null;
+  /** Tells every device the Watch Party's new shared state. */
+  publish(next: Omit<WatchPartyState, "seq">): void;
 }
 
-export function keepInStep({ context, party }: DriftOptions) {
+export function keepInStep({ context, party, publish }: DriftOptions) {
+  /** Each Viewer's latest report, with the device it came from. */
+  const reports = new Map<Viewer, PositionMessage & { device: DeviceId }>();
   /** When each device was last told to catch up. */
   const caughtUpAt = new Map<DeviceId, number>();
+  /** What a waiting Watch Party goes back to. */
+  let resumeTo: "playing" | "paused" = "playing";
 
   function catchUp(device: Device, current: WatchPartyState) {
     const last = caughtUpAt.get(device.id);
@@ -53,15 +73,52 @@ export function keepInStep({ context, party }: DriftOptions) {
     context.send(device.id, { type: "watchParty:catchUp", partyId: current.id, seq: current.seq });
   }
 
+  /** Pauses every player where the Watch Party is now, until `viewer` is there too. */
+  function wait(current: WatchPartyState, viewer: Viewer) {
+    if (current.phase.name === "playing" || current.phase.name === "paused") resumeTo = current.phase.name;
+    const now = context.now();
+    publish({
+      ...current,
+      phase: { name: "waiting", viewer, reason: "behind" },
+      anchor: { ...current.anchor, position: anchorAt(current.anchor, now).position, serverTime: now, playing: false },
+    });
+  }
+
+  /** Whether `viewer`'s player, as last reported, is where the waiting Watch Party is. */
+  function isThere(viewer: Viewer, current: WatchPartyState) {
+    const report = reports.get(viewer);
+    return (
+      !!report &&
+      report.device === current.activeDevices[viewer] &&
+      report.seq === current.seq &&
+      !report.stalled &&
+      Math.abs(report.position - current.anchor.position) <= DRIFT_IGNORED_S
+    );
+  }
+
+  /** Starts every player again, together, once all of them are where the Watch Party waits. */
+  function resumeWhenAllThere(current: WatchPartyState) {
+    if (!VIEWERS.every((viewer) => isThere(viewer, current))) return;
+    publish({
+      ...current,
+      phase: { name: resumeTo },
+      anchor: { ...current.anchor, serverTime: context.now() + RESUME_DELAY_MS, playing: resumeTo === "playing" },
+    });
+  }
+
   return {
     /** A position report from the active device `from` (the coordinator checks that). */
     reported(from: Device, report: PositionMessage) {
       const current = party();
       // A report about an older shared state says nothing about this one.
       if (!current || report.partyId !== current.id || report.seq !== current.seq) return;
-      if (current.phase.name !== "playing" && current.phase.name !== "paused") return;
-      const expected = anchorAt(current.anchor, report.serverTime).position;
-      if (Math.abs(expected - report.position) > DRIFT_IGNORED_S) catchUp(from, current);
+      reports.set(from.viewer, { ...report, device: from.id });
+      const phase = current.phase.name;
+      if (phase === "waiting") return resumeWhenAllThere(current);
+      if (phase !== "playing" && phase !== "paused") return;
+      const behind = anchorAt(current.anchor, report.serverTime).position - report.position;
+      if (phase === "playing" && (report.stalled || behind > DRIFT_LIMIT_S)) wait(current, from.viewer);
+      else if (Math.abs(behind) > DRIFT_IGNORED_S) catchUp(from, current);
     },
   };
 }

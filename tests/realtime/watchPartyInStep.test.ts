@@ -11,16 +11,17 @@ const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "
 const STEP_MS = 50;
 
 /**
- * Advances `ms`, looking at each of `reads` every `STEP_MS`, and returns the
- * values each one showed, in order, without repeats.
+ * Advances `ms`, looking at each of `reads` every `STEP_MS`, and returns
+ * what each one showed: its first value, then every change, with the time
+ * it was first seen.
  */
 function track<R extends Record<string, unknown>>(h: Harness, ms: number, reads: { [K in keyof R]: () => R[K] }) {
-  const seen = {} as { [K in keyof R]: R[K][] };
+  const seen = {} as { [K in keyof R]: { at: number; value: R[K] }[] };
   const look = () => {
     for (const key of Object.keys(reads) as (keyof R)[]) {
       const value = reads[key]();
-      const values = (seen[key] ??= []);
-      if (values.length === 0 || values.at(-1) !== value) values.push(value);
+      const changes = (seen[key] ??= []);
+      if (changes.length === 0 || changes.at(-1)!.value !== value) changes.push({ at: h.clock.now(), value });
     }
   };
   look();
@@ -29,6 +30,16 @@ function track<R extends Record<string, unknown>>(h: Harness, ms: number, reads:
     look();
   }
   return seen;
+}
+
+/** The values `track` saw, without their times. */
+function values<T>(changes: { value: T }[]) {
+  return changes.map(({ value }) => value);
+}
+
+/** The biggest step `track` saw a position take between two looks, in seconds. */
+function biggestJump(changes: { value: number }[]) {
+  return Math.max(0, ...changes.slice(1).map(({ value }, i) => Math.abs(value - changes[i]!.value)));
 }
 
 /** How far `a`'s player is from `b`'s, in seconds. */
@@ -65,7 +76,9 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
         waitingFor: () => giorgi.partySync!.view.waitingFor ?? mariam.partySync!.view.waitingFor,
       });
 
-      expect(seen).toEqual({ giorgiPaused: [false], mariamPaused: [false], waitingFor: [null] });
+      expect(values(seen.giorgiPaused)).toEqual([false]);
+      expect(values(seen.mariamPaused)).toEqual([false]);
+      expect(values(seen.waitingFor)).toEqual([null]);
       expect(apart(giorgi, mariam)).toBeLessThan(0.5);
     });
 
@@ -76,6 +89,41 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       h.advance(10 * SECOND);
 
       expect(giorgi.player!.position - mariam.player!.position).toBeCloseTo(0.3, 1);
+    });
+  });
+
+  describe("a Viewer who falls further behind", () => {
+    it("pauses both players with \"Waiting for Mariam…\", and both resume together once she caught up", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      const before = giorgi.player!.position;
+
+      // Mariam's stream stalls for a while.
+      mariam.player!.stall(6 * SECOND);
+      h.advance(4 * SECOND);
+      expect(giorgi.player?.paused).toBe(true);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      expect(mariam.partySync?.view.waitingFor).toBe("mariam");
+      const waitingAt = giorgi.player!.position;
+      expect(waitingAt - before).toBeLessThan(3);
+
+      const seen = track(h, 20 * SECOND, {
+        giorgiPlaying: () => !giorgi.player!.paused,
+        mariamPlaying: () => !mariam.player!.paused,
+        giorgiPosition: () => giorgi.player!.position,
+        mariamPosition: () => mariam.player!.position,
+        waitingFor: () => giorgi.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.giorgiPlaying)).toEqual([false, true]);
+      expect(values(seen.mariamPlaying).at(-1)).toBe(true);
+      // Both start again at the same moment, from where Giorgi waited...
+      expect(seen.mariamPlaying.at(-1)!.at).toBe(seen.giorgiPlaying.at(-1)!.at);
+      expect(values(seen.waitingFor)).toEqual(["mariam", null]);
+      expect(giorgi.player!.position).toBeGreaterThan(waitingAt + 5);
+      expect(apart(giorgi, mariam)).toBeLessThan(0.5);
+      // ...and nobody missed anything: neither player skipped ahead.
+      expect(biggestJump(seen.giorgiPosition)).toBeLessThan(0.5);
+      expect(biggestJump(seen.mariamPosition)).toBeLessThan(0.5);
     });
   });
 });

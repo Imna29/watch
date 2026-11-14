@@ -32,6 +32,15 @@ const SEEK_TOLERANCE_S = 0.5;
 /** How long the other Viewer's change message stays. */
 const CHANGE_MESSAGE_MS = 5000;
 
+/**
+ * A playing player tells its time at least about once a second. One that has
+ * said nothing for this long has stalled.
+ */
+const STALL_MS = 2000;
+
+/** A player that fell behind plays on until it is this close to where the Watch Party waits for it. */
+const CAUGHT_UP_S = 0.1;
+
 export interface PartySyncView {
   /** The Source's player: loading the Title, ready, or failed to load it. */
   player: "loading" | "ready" | "failed";
@@ -154,9 +163,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   /**
    * The player as last heard from it (or as last told: commands count as
    * done until the player says otherwise). `position` is at `at`, on this
-   * device's clock.
+   * device's clock. A `stalled` player stands still although not paused.
    */
-  const player = { paused: true, position: 0, at: clock.now(), rate: 1 };
+  const player = { paused: true, position: 0, at: clock.now(), rate: 1, stalled: false };
   const echoes = createEchoes(clock);
   let countdownTimer: TimerId | null = null;
   /** What the frame has loaded: the Source and what it plays (see `load`). */
@@ -168,6 +177,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
   let reportTimer: TimerId | null = null;
+  let startTimer: TimerId | null = null;
   let destroyed = false;
 
   function setView(next: Partial<PartySyncView>) {
@@ -183,12 +193,30 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   }
 
   function playerPosition() {
-    return player.paused ? player.position : player.position + ((clock.now() - player.at) / 1000) * player.rate;
+    if (player.paused || player.stalled) return player.position;
+    return player.position + ((clock.now() - player.at) / 1000) * player.rate;
   }
 
   function playerIsAt(position: number) {
     player.position = position;
     player.at = clock.now();
+    player.stalled = false;
+  }
+
+  /** Whether the Watch Party waits for this device's Viewer to catch up. */
+  function waitingForMe(party: WatchPartyState) {
+    return party.phase.name === "waiting" && party.phase.viewer === client.identity?.viewer;
+  }
+
+  /**
+   * Where the player should be now: where the shared state is. While the
+   * Watch Party waits for this Viewer, a player that fell behind plays on up
+   * to where the others wait, instead of jumping there: nobody misses anything.
+   */
+  function wantedNow(party: WatchPartyState) {
+    const wanted = anchorAt(party.anchor, client.serverNow());
+    const behind = waitingForMe(party) && playerPosition() < wanted.position - CAUGHT_UP_S;
+    return behind ? { playing: true, position: playerPosition() } : wanted;
   }
 
   /** Moves the player to where the shared state is now (also when the coordinator says it drifted). */
@@ -209,12 +237,13 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
     const party = live();
     if (!party || view.player !== "ready" || echoes.awaiting("seeked")) return;
+    if (!player.paused && !player.stalled && clock.now() - player.at > STALL_MS) player.stalled = true;
     watchParty.reportPosition({
       partyId: party.id,
       seq: party.seq,
       position: playerPosition(),
       serverTime: client.serverNow(),
-      blocked: false,
+      stalled: player.stalled,
     });
   }
 
@@ -222,7 +251,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   function apply() {
     const party = live();
     if (!adapter || view.player !== "ready" || !party) return;
-    const wanted = anchorAt(party.anchor, client.serverNow());
+    const wanted = wantedNow(party);
     if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) {
       adapter.seek(wanted.position);
       echoes.expect({ type: "seeked", position: wanted.position });
@@ -271,9 +300,13 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
         if (!sentAsViewerChange(event)) apply();
         return;
       }
-      case "timeupdate":
+      case "timeupdate": {
         playerIsAt(event.position);
+        // Catching up: stop where the Watch Party waits.
+        const party = live();
+        if (party && waitingForMe(party)) apply();
         return;
+      }
       case "error":
         if (event.reason === "not-ready") setView({ player: "failed" });
         return;
@@ -403,12 +436,31 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     if (destroyed || !party) return;
     load(party);
     setView({
-      waitingFor: party.phase.name === "inviting" ? otherViewer(party.starter) : null,
+      waitingFor: waitingFor(party),
       gettingReady: party.phase.name === "countdown" && party.phase.endsAt === null,
     });
     tellChange(party);
     reportReady();
     countDown();
+    startOnTime(party);
+  }
+
+  /** "Waiting for Mariam…": for the other Viewer to join, or for a Viewer to catch up or come back. */
+  function waitingFor({ phase, starter }: WatchPartyState) {
+    if (phase.name === "inviting") return otherViewer(starter);
+    return phase.name === "waiting" ? phase.viewer : null;
+  }
+
+  /** Starts the player at the moment the shared state says, so every player starts at once. */
+  function startOnTime(party: WatchPartyState) {
+    if (startTimer !== null) clock.clearTimeout(startTimer);
+    startTimer = null;
+    const wait = party.anchor.serverTime - client.serverNow();
+    if (!party.anchor.playing || wait <= 0) return;
+    startTimer = clock.setTimeout(() => {
+      startTimer = null;
+      apply();
+    }, wait);
   }
 
   followParty();
@@ -436,6 +488,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       stopFollowing();
       stopCatchingUp();
       if (reportTimer !== null) clock.clearTimeout(reportTimer);
+      if (startTimer !== null) clock.clearTimeout(startTimer);
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
       if (changeTimer !== null) clock.clearTimeout(changeTimer);
       adapter?.destroy();

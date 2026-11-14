@@ -120,7 +120,6 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     let readyDevices = new Set<DeviceId>();
     let seq = 0;
     let partyCount = 0;
-    const inStep = keepInStep({ context, party: () => party });
 
     /** Tells every device about the change, numbered after every earlier one. */
     function publish(next: Omit<WatchPartyState, "seq">) {
@@ -129,6 +128,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         context.send(device.id, { type: "watchParty", party });
       }
     }
+
+    const inStep = keepInStep({ context, party: () => party, publish });
 
     /** Ends the Watch Party for both Viewers; devices hear why, then it is gone. */
     function end(reason: WatchPartyEndReason, by: Viewer) {
