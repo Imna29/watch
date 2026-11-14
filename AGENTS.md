@@ -104,7 +104,9 @@ The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
   CineSrc, then VidFast. A factory states `canSetRate` (VidFast: no speed
   command), which the coordinator reads through `canSetRate()`.
 - `partySync.ts`: on the device that takes part, joins an adapter to the
-  connection (`usePartySync` in `composables/useWatchParty.ts`).
+  connection (`usePartySync` in `composables/useWatchParty.ts`). Its parts are in
+  `partySync/`: echoes, position reports (stall, "Click to resume"), the
+  ending, and the player status that drives Source fallback.
 Each Viewer takes part from one active device, the newest they joined from.
 The coordinator handles an intent only from that device, unless
 `FROM_ANY_DEVICE` (`coordinator.ts`) lists it: list there an intent any
@@ -112,7 +114,7 @@ device of a Viewer may send.
 Shared controls: party sync turns a Viewer's play, pause, seek or speed in
 the Source's own player into a `watchParty:playback` intent
 (`sharedControls.ts` on the server), and every command it gives the player
-is noted as an expected echo (`createEchoes` in `partySync.ts`), so the
+is noted as an expected echo (`createEchoes` in `partySync/echoes.ts`), so the
 player's report of it is never sent back. A new command party sync gives
 must be noted the same way. Devices drop a state whose `seq` is older than
 one they have.
