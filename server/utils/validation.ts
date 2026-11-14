@@ -1,9 +1,5 @@
 import { z } from "zod";
-
-const PG_INT_MAX = 2_147_483_647;
-
-// A TMDB id: a positive integer that fits a Postgres `integer` column.
-const tmdbId = z.number().int().positive().max(PG_INT_MAX);
+import { tmdbIdNumberSchema as tmdbId } from "~/utils/tmdbId";
 
 // Season 0 is "Specials" on TMDB, so 0 is valid.
 const seasonNumber = z.number().int().min(0).max(10_000);

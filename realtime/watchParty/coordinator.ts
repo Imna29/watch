@@ -8,6 +8,7 @@ import { z } from "zod";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
+import { tmdbIdNumberSchema } from "../../utils/tmdbId";
 import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
 import type { DeviceKey } from "../connection/protocol";
 import type { DeviceId, DeviceMessageType } from "../protocol";
@@ -74,13 +75,11 @@ export interface WatchPartyOptions {
   history: HistoryPort;
 }
 
-/** Ids go into Postgres `integer` columns (History, episode progress). */
-const PG_INT_MAX = 2_147_483_647;
-
 const startSchema = z
   .object({
     type: z.literal("watchParty:start"),
-    title: titleRefSchema.extend({ tmdbId: z.number().int().positive().max(PG_INT_MAX) }),
+    // The id goes into Postgres `integer` columns (History, episode progress).
+    title: titleRefSchema.extend({ tmdbId: tmdbIdNumberSchema }),
     episode: episodeSchema.nullable(),
     replacing: partyIdSchema.nullable(),
   })
