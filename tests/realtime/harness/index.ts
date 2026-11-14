@@ -13,7 +13,13 @@
  * ```
  *
  * A test device is what `createRealtimeDevice` returns (`client`, `presence`,
- * `watchParty`, ...) plus its own clock and network controls. While the
+ * `watchParty`, `call`, ...) plus its own clock and network controls, and
+ * its fake browser media for the Call (`media`: microphone, camera, peer
+ * connections). Code that awaits between timers (the Call's media and peer
+ * connections) needs `await h.advanceAsync(ms)`, which lets promises settle
+ * on the way.
+ *
+ * While the
  * device takes part in a Watch Party it shows the Watch Party player, as the
  * app's layout does: real party sync driving a fake Source player
  * (`device.partySync`, `device.player`).
@@ -40,6 +46,7 @@ import {
 } from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
 import { createFakeHistory } from "./fakeHistory";
+import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
 import { createFakeServer, type DeviceTraffic, type Link } from "./fakeNetwork";
 import {
   createFakeFrame,
@@ -72,6 +79,8 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly partySync: PartySync | null;
   /** The Source's player in the Watch Party player, once it loaded something; null otherwise. */
   readonly player: FakeSourcePlayer | null;
+  /** This device's fake browser media: what its microphone and camera allow, and its peer connections. */
+  readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
   /** Changes this device's one-way network delay. */
@@ -118,6 +127,7 @@ export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {
   const server = createFakeServer(clock, {
     watchParty: { sources: [syncableSource], history },
   });
+  const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};
 
   return {
@@ -132,6 +142,11 @@ export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {
       clock.advance(ms);
     },
 
+    /** Like `advance`, letting promises settle on the way. */
+    advanceAsync(ms: number) {
+      return clock.advanceAsync(ms);
+    },
+
     /** A new device of `viewer`, signed in and connecting. */
     device(viewer: Viewer, options: TestDeviceOptions = {}): TestDevice {
       counts[viewer] = (counts[viewer] ?? 0) + 1;
@@ -139,10 +154,12 @@ export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {
       const link: Link = { delayMs: options.delayMs ?? DEFAULT_DELAY_MS, dropped: false };
       const traffic = { name, received: [], connectionAttempts: [] };
       const deviceClock = clock.skewed(options.clockSkewMs ?? 0);
+      const media = mediaWorld.platformFor(name, deviceClock);
       const device = createRealtimeDevice({
         url: "ws://watch.test/realtime",
         openSocket: server.socketsFor(viewer, link, traffic),
         clock: deviceClock,
+        call: media,
       });
       device.client.start();
 
@@ -170,6 +187,7 @@ export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {
         name,
         viewer,
         clock: deviceClock,
+        media,
         get partySync() {
           return partyPlayer?.partySync ?? null;
         },

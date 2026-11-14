@@ -77,7 +77,10 @@ export interface WatchPartyState {
   anchor: PlaybackAnchor;
   /** The Viewer who made the last change. */
   lastChangeBy: Viewer;
-  /** The one device of each Viewer that takes part; null for a Viewer not (yet) in it. */
+  /**
+   * The one device of each Viewer that takes part: the newest one they
+   * joined from. Null for a Viewer not (yet) in it.
+   */
   activeDevices: Record<Viewer, DeviceId | null>;
 }
 
@@ -93,6 +96,15 @@ export interface StartWatchPartyMessage {
 /** The invited Viewer joins from this device. */
 export interface JoinWatchPartyMessage {
   type: "watchParty:join";
+  partyId: string;
+}
+
+/**
+ * A Viewer who takes part from another device joins from this one: it takes
+ * the Watch Party over, and the other device stops.
+ */
+export interface TakeOverWatchPartyMessage {
+  type: "watchParty:takeOver";
   partyId: string;
 }
 
@@ -148,6 +160,7 @@ export interface AlreadyStartedMessage {
 export type WatchPartyDeviceMessage =
   | StartWatchPartyMessage
   | JoinWatchPartyMessage
+  | TakeOverWatchPartyMessage
   | CancelWatchPartyMessage
   | PlayerStatusMessage
   | PlaybackMessage;

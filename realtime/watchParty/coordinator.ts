@@ -8,8 +8,8 @@ import { z } from "zod";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
-import type { Device, FeatureFactory } from "../coordinator";
-import type { DeviceId } from "../protocol";
+import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
+import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
 import type { TitleRef } from "../presence/protocol";
 import type {
@@ -18,6 +18,7 @@ import type {
   JoinWatchPartyMessage,
   PlayerStatusMessage,
   StartWatchPartyMessage,
+  TakeOverWatchPartyMessage,
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
@@ -81,6 +82,19 @@ const playerStatusSchema = z.object({
   status: z.literal("ready"),
 });
 
+/**
+ * The intents any device of a Viewer may send: starting a Watch Party,
+ * joining or taking it over, and cancelling (`mayEnd` has its own rule).
+ * Every other Watch Party intent (the player's status, playback) counts only
+ * from the device the Viewer takes part from: see `onlyFromActiveDevices`.
+ */
+const FROM_ANY_DEVICE: ReadonlySet<DeviceMessageType> = new Set([
+  "watchParty:start",
+  "watchParty:join",
+  "watchParty:takeOver",
+  "watchParty:cancel",
+]);
+
 export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPartyOptions): FeatureFactory {
   if (sources.length === 0) throw new Error("A Watch Party needs at least one Syncable Source.");
 
@@ -128,6 +142,42 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       return current.phase.name === "inviting" && device.viewer === current.starter;
     }
 
+    /**
+     * A Viewer who takes part from one device joins from `device`, which
+     * becomes their active device. The device it took over from sees that in
+     * the shared state and stops its player. Playback goes on undisturbed:
+     * the new device's player starts at the shared position.
+     */
+    function takeOver(device: Device, current: WatchPartyState) {
+      const previous = current.activeDevices[device.viewer];
+      if (previous === null || previous === device.id) return;
+      // The new device's player has yet to load: it reports when it has.
+      readyDevices.delete(previous);
+      publish({ ...current, activeDevices: { ...current.activeDevices, [device.viewer]: device.id } });
+    }
+
+    /**
+     * The one guard against devices that do not take part: every intent but
+     * those in `FROM_ANY_DEVICE` is ignored unless it comes from its
+     * Viewer's active device. So nothing a device sends after another device
+     * took over from it (or before its player closed) changes the Watch
+     * Party. A new intent is guarded unless listed there.
+     */
+    function onlyFromActiveDevices(handlers: MessageHandlers): MessageHandlers {
+      const guarded: Record<string, MessageHandler<DeviceMessageType>> = {};
+      for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
+        guarded[type] = FROM_ANY_DEVICE.has(type)
+          ? handler
+          : {
+              schema: handler.schema,
+              handle(from, message) {
+                if (party?.activeDevices[from.viewer] === from.id) handler.handle(from, message);
+              },
+            };
+      }
+      return guarded as MessageHandlers;
+    }
+
     /** Starts the 3-2-1 once both Viewers' players have loaded the Title. */
     function startCountdownWhenReady() {
       if (party?.phase.name !== "countdown" || party.phase.endsAt !== null) return;
@@ -152,7 +202,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         }
       },
 
-      handlers: {
+      handlers: onlyFromActiveDevices({
         "watchParty:start": {
           schema: startSchema satisfies z.ZodType<StartWatchPartyMessage>,
           handle(from, { title, episode, replacing }) {
@@ -201,10 +251,17 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           },
         },
 
+        "watchParty:takeOver": {
+          schema: partyIntentSchema("watchParty:takeOver") satisfies z.ZodType<TakeOverWatchPartyMessage>,
+          handle(from, { partyId }) {
+            if (party?.id === partyId) takeOver(from, party);
+          },
+        },
+
         "watchParty:player": {
           schema: playerStatusSchema satisfies z.ZodType<PlayerStatusMessage>,
           handle(from, { partyId }) {
-            if (party?.id !== partyId || party.activeDevices[from.viewer] !== from.id) return;
+            if (party?.id !== partyId) return;
             readyDevices.add(from.id);
             startCountdownWhenReady();
           },
@@ -217,16 +274,15 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           },
         },
 
-        // Shared controls: play, pause, seek or speed, from the device a Viewer takes part from.
+        // Shared controls: play, pause, seek or speed (from the active device, as `onlyFromActiveDevices` ensures).
         "watchParty:playback": {
           schema: playbackSchema,
           handle(from, { partyId, change }) {
-            if (party?.id !== partyId || party.activeDevices[from.viewer] !== from.id) return;
-            if (!takesPlaybackChanges(party.phase)) return;
+            if (party?.id !== partyId || !takesPlaybackChanges(party.phase)) return;
             publish({ ...party, ...afterPlaybackChange(party, change, context.now()), lastChangeBy: from.viewer });
           },
         },
-      },
+      }),
     };
   };
 }
