@@ -13,8 +13,11 @@ import type { PlayerFrame } from "../../../realtime/watchParty/sources/adapter";
 import type { AdaptedSourceId } from "../../../realtime/watchParty/sources";
 import { getSource, type Playable, type SourceId } from "../../../utils/sources";
 
-/** Whether a player option applies to a Source: `true` for every Source, or a list of them. */
-export type ForSources = boolean | readonly SourceId[];
+/**
+ * Where a player option applies: `true` for every Source, a list of
+ * Sources, or a test of a Source and what it is asked to play.
+ */
+export type ForSources = boolean | readonly SourceId[] | ((source: SourceId, playable: Playable) => boolean);
 
 export interface FakePlayerOptions {
   /** How long the player takes to find a stream and say it is ready. */
@@ -445,10 +448,10 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       },
     };
 
-    if (!appliesTo(options.hangs, sourceId)) {
+    if (!appliesTo(options.hangs, sourceId, playable)) {
       loading = clock.setTimeout(() => {
         loading = null;
-        if (appliesTo(options.unavailable, sourceId)) {
+        if (appliesTo(options.unavailable, sourceId, playable)) {
           post("unavailable");
           return;
         }
@@ -506,7 +509,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
   };
 }
 
-function appliesTo(option: ForSources | undefined, source: SourceId) {
+function appliesTo(option: ForSources | undefined, source: SourceId, playable: Playable) {
+  if (typeof option === "function") return option(source, playable);
   return option === true || (Array.isArray(option) && option.includes(source));
 }
 

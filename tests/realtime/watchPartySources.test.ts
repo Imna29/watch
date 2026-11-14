@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { describeChange } from "../../realtime/watchParty/changeMessage";
-import { getSource } from "../../utils/sources";
+import { getSource, type Playable, type SourceId } from "../../utils/sources";
 import { createHarness, SECOND, sourceCanSetRate, syncableSourcesUnderTest, type TestDevice } from "./harness";
 import type { FakePlayerOptions } from "./harness/fakeSourcePlayers";
 
 const MINUTE = 60 * SECOND;
 
 const DUNE = { contentType: WatchPlaylistItemType.MOVIE, tmdbId: 438631, name: "Dune" };
+const SEVERANCE = { contentType: WatchPlaylistItemType.TV_SHOW, tmdbId: 95396, name: "Severance" };
 
 /** The change message `device` shows over the player ("Mariam switched to VidFast"); null when none. */
 function message(device: TestDevice) {
@@ -59,6 +60,36 @@ describe.each(syncableSourcesUnderTest())("Syncable Sources in a Watch Party on 
       }
       expect(giorgi.player!.position).toBeLessThan(10);
       expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    });
+
+    it("offers every Syncable Source again for another episode", () => {
+      const S1E1 = { season: 1, episode: 1 };
+      const S1E2 = { season: 1, episode: 2 };
+      // The first Source lacks S1E1, the next one S1E2.
+      const lacks = (candidate: SourceId, playable: Playable) =>
+        playable.kind === "episode" && candidate === (playable.episode === 1 ? source : next);
+      const h = createHarness({ syncableSource: source, fallbackSources: [next] });
+      const giorgi = h.device("giorgi", { player: { unavailable: lacks } });
+      const mariam = h.device("mariam", { player: { unavailable: lacks } });
+      h.advance(SECOND);
+      giorgi.watchParty.start(SEVERANCE, S1E1);
+      h.advance(5 * SECOND);
+      mariam.watchParty.join();
+      h.advance(25 * SECOND);
+      giorgi.watchParty.switchSource(next);
+      h.advance(10 * SECOND);
+      expect(giorgi.player).toMatchObject({ sourceId: next, paused: false });
+
+      mariam.watchParty.changeEpisode(S1E2);
+      h.advance(25 * SECOND);
+      for (const device of [giorgi, mariam]) {
+        expect(device.watchParty.party).toMatchObject({
+          source: next,
+          episode: S1E2,
+          failedSources: [next],
+          fallback: { kind: "source", source },
+        });
+      }
     });
 
     it("offers both Viewers Tab Share once no Syncable Source is left", () => {

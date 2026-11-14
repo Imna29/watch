@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import type { Episode, PlaybackChange, PlaybackMessage, WatchPartyState } from "./protocol";
+import { NO_FAILED_SOURCES } from "./sourceFallback";
 
 /** No Title runs longer than a day: a position beyond it is refused. */
 const MAX_POSITION_S = 24 * 3600;
@@ -30,17 +31,19 @@ export function sameEpisode(a: Episode | null, b: Episode | null) {
 /**
  * The Watch Party after a Viewer chose `episode` at server time `now`: both
  * players load it, and once both have, the 3-2-1 starts it from the
- * beginning, as it started the first one. At the same speed.
+ * beginning, as it started the first one. At the same speed, on the same
+ * Source, and every Syncable Source gets another chance at it.
  */
 export function afterEpisodeChange(
   party: WatchPartyState,
   episode: Episode,
   now: number,
-): Pick<WatchPartyState, "episode" | "phase" | "anchor"> {
+): Pick<WatchPartyState, "episode" | "phase" | "anchor" | "failedSources" | "fallback"> {
   return {
     episode,
     phase: { name: "countdown", endsAt: null },
     anchor: { ...party.anchor, position: 0, serverTime: now, playing: false },
+    ...NO_FAILED_SOURCES,
   };
 }
 
