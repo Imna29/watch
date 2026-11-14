@@ -1,6 +1,7 @@
 /**
- * The Call, on a device: joining and leaving, this device's microphone and
- * camera, and the peer connection to the other Viewer's Call device.
+ * The Call, on a device: joining and leaving, this device's microphone (with
+ * push-to-talk) and camera, and the peer connection to the other Viewer's
+ * Call device.
  * Framework-free: the browser's media and WebRTC come in as a
  * `CallPlatform`, so seam 1 tests run it on fakes. Vue reaches it through
  * `useCall()` (`composables/useCall.ts`).
@@ -37,6 +38,11 @@ export interface CallState {
   mic: { on: boolean; problem: MediaProblem | null };
   camera: { on: boolean; problem: MediaProblem | null };
   /**
+   * Push-to-talk on this device: while `on`, the microphone is live only
+   * while the Viewer is `holding` the talk button.
+   */
+  pushToTalk: { on: boolean; holding: boolean };
+  /**
    * The connection to the other Viewer's Call device. `waiting`: there is
    * none, because the other Viewer is not in the Call (or this device is not).
    */
@@ -60,11 +66,26 @@ export interface DeviceCall {
   leave(): void;
   /**
    * Unmutes (true) or mutes (false) the microphone, without renegotiating.
-   * Turning on a microphone that could not start asks for it again.
+   * Turning on a microphone that could not start asks for it again. In
+   * push-to-talk the talk button decides instead, and this is where the
+   * microphone returns when push-to-talk is turned off.
    */
   setMic(on: boolean): Promise<void>;
   /** Turns the camera on or off. Off releases it, so its light goes off. */
   setCamera(on: boolean): Promise<void>;
+  /**
+   * Turns push-to-talk on or off on this device, in or out of the Call (it
+   * stays on across joins). On, the microphone goes quiet until the talk
+   * button is held; off, it returns to how the mute button left it.
+   */
+  setPushToTalk(on: boolean): Promise<void>;
+  /**
+   * The Viewer presses (true) or lets go of (false) the talk button. In
+   * push-to-talk, the microphone is live from press to release. Pressing
+   * when the microphone could not start asks for it again; if it comes
+   * after the release, it stays quiet.
+   */
+  holdToTalk(holding: boolean): Promise<void>;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -86,9 +107,29 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
   /** Counts changes to each slot, so a microphone or camera granted after a newer change is dropped. */
   const requests = Object.fromEntries(CALL_SLOTS.map(({ slot }) => [slot, 0])) as Record<CallSlot, number>;
   let peer: CallPeer | null = null;
+  /** The microphone as the mute button left it: what it is while push-to-talk is off. */
+  let micChoice = true;
+  let pushToTalk = false;
+  let holding = false;
 
   function changed() {
     for (const listener of listeners) listener();
+  }
+
+  /** Whether the microphone should be live: in push-to-talk, while the talk button is held. */
+  function micWanted() {
+    return pushToTalk ? holding : micChoice;
+  }
+
+  /**
+   * Sets the microphone to what it should be now, and tells the other Viewer.
+   * A microphone that should be live but could not start is asked for again.
+   */
+  async function updateMic() {
+    if (local.mic) local.mic.enabled = micWanted();
+    else if (micWanted() && status === "in") await start("mic", () => platform.getMicrophone());
+    sendMedia();
+    changed();
   }
 
   function media(): CallMedia {
@@ -114,6 +155,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
     try {
       const track = await open();
       if (request !== requests[slot]) return track.stop();
+      if (slot === "mic") track.enabled = micWanted();
       setLocal(slot, track);
       problems[slot] = null;
     } catch (error) {
@@ -135,6 +177,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
     status = "out";
     joinId = null;
     takeOver = false;
+    holding = false;
     setLink(null);
     for (const slot of Object.keys(local) as CallSlot[]) {
       setLocal(slot, null);
@@ -205,6 +248,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
         other: viewers && me ? viewers[otherViewer(me)] : null,
         mic: { on: !!local.mic?.enabled, problem: problems.mic },
         camera: { on: !!local.camera, problem: problems.camera },
+        pushToTalk: { on: pushToTalk, holding },
         connection: peer ? peer.status : "waiting",
         local: { ...local },
         remote: peer ? { ...peer.remote } : emptySlots(),
@@ -216,6 +260,7 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
       if (status !== "out" || !identity) return;
       status = "joining";
       continuedElsewhere = false;
+      micChoice = true;
       joinId = `${identity.deviceId}/${++joinCount}`;
       takeOver = true;
       changed();
@@ -236,13 +281,8 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
 
     async setMic(on) {
       if (status === "out") return;
-      if (local.mic) {
-        local.mic.enabled = on;
-      } else if (on) {
-        await start("mic", () => platform.getMicrophone());
-      }
-      sendMedia();
-      changed();
+      micChoice = on;
+      await updateMic();
     },
 
     async setCamera(on) {
@@ -255,6 +295,19 @@ export function createDeviceCall(client: DeviceClient, platform: CallPlatform, c
       }
       sendMedia();
       changed();
+    },
+
+    async setPushToTalk(on) {
+      pushToTalk = on;
+      holding = false;
+      await updateMic();
+    },
+
+    async holdToTalk(on) {
+      // Every way a hold can end lets go, so most calls change nothing.
+      if (status === "out" || !pushToTalk || holding === on) return;
+      holding = on;
+      await updateMic();
     },
 
     subscribe(listener) {

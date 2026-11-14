@@ -17,8 +17,11 @@ export function useCall() {
         /** Joins from this device (taking the Call over from the Viewer's other device): microphone on, camera off. */
         join: () => call.join(),
         leave: () => call.leave(),
-        /** Unmutes or mutes. Push-to-talk holds it on. */
+        /** Unmutes or mutes. In push-to-talk the talk button decides instead. */
         setMic: (on: boolean) => call.setMic(on),
         setCamera: (on: boolean) => call.setCamera(on),
+        setPushToTalk: (on: boolean) => call.setPushToTalk(on),
+        /** Presses (true) or lets go of (false) the talk button. */
+        holdToTalk: (holding: boolean) => call.holdToTalk(holding),
     };
 }

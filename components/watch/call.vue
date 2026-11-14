@@ -43,7 +43,12 @@ const DEVICE_NAMES = { mic: "Microphone", camera: "Camera" } as const;
 
 function problemMessage(device: keyof typeof DEVICE_NAMES, problem: MediaProblem) {
     const name = DEVICE_NAMES[device];
-    const turnOn = device === "mic" ? "turn the microphone on" : "turn the camera on";
+    const turnOn =
+        device === "camera"
+            ? "turn the camera on"
+            : state.value.pushToTalk.on
+              ? "hold to talk"
+              : "turn the microphone on";
     switch (problem) {
         case "blocked":
             return `${name} blocked. Allow it in your browser's site settings (left of the address bar), then ${turnOn} again.`;
@@ -94,6 +99,7 @@ watchEffect(() => {
                         :camera="state.camera.on" mirrored></WatchCallTile>
                     <WatchCallControls class="ml-auto"></WatchCallControls>
                 </div>
+                <WatchCallPushToTalk></WatchCallPushToTalk>
                 <p v-for="message in problems" :key="message" role="alert" class="text-xs text-amber-300 cursor-auto">
                     {{ message }}
                 </p>
