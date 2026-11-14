@@ -4,7 +4,7 @@
  * `AnalysisStore`, time through `now`, and refusals are named outcomes that
  * route handlers map to HTTP statuses.
  */
-import { ANALYSIS_WRITER, type Viewer } from "../../models/Viewer";
+import { ANALYSIS_GRADER, ANALYSIS_WRITER, type Viewer } from "../../models/Viewer";
 
 /** A movie's Analysis. A movie has at most one. */
 export interface Analysis {
@@ -15,6 +15,12 @@ export interface Analysis {
   submittedAt: Date;
   /** When its text was last written. */
   editedAt: Date;
+  /** The grader's Grade, -1 to 10; null until graded. Once graded, the text is locked. */
+  grade: number | null;
+  /** The remark given with the Grade; null without one. */
+  remark: string | null;
+  /** When the current Grade was given; null until graded. */
+  gradedAt: Date | null;
 }
 
 /** Where Analyses are kept: Postgres in the app (`postgresStore.ts`), memory in tests (`memoryStore.ts`). */
@@ -23,9 +29,16 @@ export interface AnalysisStore {
   find(movieId: number): Promise<Analysis | null>;
   /**
    * Gives the movie an Analysis with `text`, submitted and edited `at`, or,
-   * when it has one, replaces its text and edited time. Returns it as stored.
+   * when it has an ungraded one, replaces its text and edited time. Returns it
+   * as stored, or null when it is graded: then nothing changes. One
+   * conditional operation, so a Grade given meanwhile always wins.
    */
-  write(movieId: number, text: string, at: Date): Promise<Analysis>;
+  writeUnlessGraded(movieId: number, text: string, at: Date): Promise<Analysis | null>;
+  /**
+   * Sets or replaces the movie's Grade and remark, given `at`. Returns the
+   * Analysis as stored, or null when the movie has none.
+   */
+  grade(movieId: number, grade: number, remark: string | null, at: Date): Promise<Analysis | null>;
 }
 
 export interface AnalysesOptions {
@@ -37,14 +50,36 @@ export interface AnalysesOptions {
 export type WriteResult =
   | { outcome: "written"; analysis: Analysis }
   /** The Viewer may not do this (`ANALYSIS_WRITER`, `ANALYSIS_GRADER`). */
-  | { outcome: "wrong-viewer" };
+  | { outcome: "wrong-viewer" }
+  /** The Analysis is graded, so its text is locked. */
+  | { outcome: "already-graded" };
+
+export type GradeResult =
+  | { outcome: "graded"; analysis: Analysis }
+  | { outcome: "wrong-viewer" }
+  /** The movie has no Analysis. */
+  | { outcome: "no-analysis" };
 
 export function createAnalyses({ store, now = Date.now }: AnalysesOptions) {
   return {
-    /** Creates the movie's Analysis, or replaces its text. Only the writer may. */
+    /**
+     * Creates the movie's Analysis, or replaces its text. Only the writer may,
+     * and only until it is graded.
+     */
     async write(viewer: Viewer, movieId: number, text: string): Promise<WriteResult> {
       if (viewer !== ANALYSIS_WRITER) return { outcome: "wrong-viewer" };
-      return { outcome: "written", analysis: await store.write(movieId, text, new Date(now())) };
+      const analysis = await store.writeUnlessGraded(movieId, text, new Date(now()));
+      return analysis ? { outcome: "written", analysis } : { outcome: "already-graded" };
+    },
+
+    /**
+     * Sets or replaces the movie's Grade and remark: a regrade without a
+     * remark clears the old one. Only the grader may.
+     */
+    async grade(viewer: Viewer, movieId: number, grade: number, remark: string | null): Promise<GradeResult> {
+      if (viewer !== ANALYSIS_GRADER) return { outcome: "wrong-viewer" };
+      const analysis = await store.grade(movieId, grade, remark, new Date(now()));
+      return analysis ? { outcome: "graded", analysis } : { outcome: "no-analysis" };
     },
 
     /** The movie's Analysis, or null when it has none. Either Viewer may read it. */

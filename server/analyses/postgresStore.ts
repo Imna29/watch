@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import type { db as appDb } from "../database/db";
 import { analyses } from "../database/schema";
 import type { Analysis, AnalysisStore } from "./analyses";
@@ -13,13 +13,28 @@ export function createPostgresAnalysisStore(db: Database): AnalysisStore {
       return row ? toAnalysis(row) : null;
     },
 
-    async write(movieId, text, at) {
+    // `insert ... on conflict do update ... where grade is null`: on a graded
+    // row the update is skipped and nothing is returned.
+    async writeUnlessGraded(movieId, text, at) {
       const [row] = await db
         .insert(analyses)
         .values({ movieId, text, submittedAt: at, editedAt: at })
-        .onConflictDoUpdate({ target: analyses.movieId, set: { text, editedAt: at } })
+        .onConflictDoUpdate({
+          target: analyses.movieId,
+          set: { text, editedAt: at },
+          setWhere: isNull(analyses.grade),
+        })
         .returning();
-      return toAnalysis(row!);
+      return row ? toAnalysis(row) : null;
+    },
+
+    async grade(movieId, grade, remark, at) {
+      const [row] = await db
+        .update(analyses)
+        .set({ grade, remark, gradedAt: at })
+        .where(eq(analyses.movieId, movieId))
+        .returning();
+      return row ? toAnalysis(row) : null;
     },
   };
 }
@@ -30,5 +45,8 @@ function toAnalysis(row: typeof analyses.$inferSelect): Analysis {
     text: row.text,
     submittedAt: row.submittedAt,
     editedAt: row.editedAt,
+    grade: row.grade,
+    remark: row.remark,
+    gradedAt: row.gradedAt,
   };
 }
