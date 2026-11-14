@@ -12,7 +12,7 @@ import type { Viewer } from "../../../models/Viewer";
 import type { Coordinator, Outgoing } from "../../../realtime/coordinator";
 import type { OpenSocket, SocketEvents } from "../../../realtime/deviceClient";
 import type { DeviceId, ServerMessage } from "../../../realtime/protocol";
-import { createRealtimeCoordinator, TICK_INTERVAL_MS } from "../../../realtime/server";
+import { createRealtimeCoordinator, TICK_INTERVAL_MS, type RealtimeServerOptions } from "../../../realtime/server";
 import type { FakeClock } from "./fakeClock";
 
 export interface Link {
@@ -47,7 +47,8 @@ export interface FakeServer {
   socketsFor(viewer: Viewer, link: Link, traffic: DeviceTraffic & { name: string }): OpenSocket;
 }
 
-export function createFakeServer(clock: FakeClock): FakeServer {
+/** Starts a fake server whose coordinator runs on `clock` with `options`. */
+export function createFakeServer(clock: FakeClock, options: Omit<RealtimeServerOptions, "now">): FakeServer {
   let coordinator: Coordinator | null = null;
   let ticker: unknown;
   const connections = new Map<DeviceId, Connection>();
@@ -75,7 +76,7 @@ export function createFakeServer(clock: FakeClock): FakeServer {
 
     start() {
       if (coordinator) return;
-      coordinator = createRealtimeCoordinator({ now: clock.now });
+      coordinator = createRealtimeCoordinator({ ...options, now: clock.now });
       scheduleTick();
     },
 

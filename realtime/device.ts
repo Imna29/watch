@@ -6,12 +6,14 @@
  */
 import { createDeviceClient, type DeviceClientOptions } from "./deviceClient";
 import { createDevicePresence } from "./presence/device";
+import { createDeviceWatchParty } from "./watchParty/device";
 
 export function createRealtimeDevice(options: DeviceClientOptions) {
   const client = createDeviceClient(options);
   return {
     client,
     presence: createDevicePresence(client),
+    watchParty: createDeviceWatchParty(client),
   };
 }
 
