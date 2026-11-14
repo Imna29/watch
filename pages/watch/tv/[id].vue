@@ -110,7 +110,7 @@ function openAddToPlaylistDialog() {
                         </Button>
                     </div>
                     <div class="flex flex-col gap-2">
-                        <div class="mt-2 flex gap-2" v-if="
+                        <WatchEpisodeActions class="mt-2" v-if="
                             lastWatched &&
                             lastWatched.lastEpisodeWatched &&
                             lastWatched.recentEpisodeWatched &&
@@ -120,26 +120,10 @@ function openAddToPlaylistDialog() {
                             lastWatched.lastEpisodeWatched.seasonNum ===
                             lastWatched.recentEpisodeWatched
                                 .seasonNum
-                        ">
-                            <Button class="py-5 px-5 text-lg" @click="
-                                openPlayer(
-                                    lastWatched.lastEpisodeWatched
-                                        .seasonNum,
-                                    lastWatched.lastEpisodeWatched
-                                        .episodeNum,
-                                )
-                                ">
-                                Continue S{{
-                                    lastWatched.lastEpisodeWatched.seasonNum
-                                }}E{{
-                                    lastWatched.lastEpisodeWatched.episodeNum
-                                }}
-                            </Button>
-                            <WatchTogetherButton :title="tvTitle" :episode="{
-                                season: lastWatched.lastEpisodeWatched.seasonNum,
-                                episode: lastWatched.lastEpisodeWatched.episodeNum,
-                            }"></WatchTogetherButton>
-                        </div>
+                        " :title="tvTitle"
+                            prefix="Continue" :season="lastWatched.lastEpisodeWatched.seasonNum"
+                            :episode="lastWatched.lastEpisodeWatched.episodeNum" @play="openPlayer">
+                        </WatchEpisodeActions>
                         <div class="flex flex-col gap-2 mt-2" v-if="
                             lastWatched &&
                             lastWatched.lastEpisodeWatched &&
@@ -153,48 +137,14 @@ function openAddToPlaylistDialog() {
                         ">
                             <span>Continue watching from the episode you watched
                                 most recently</span>
-                            <div class="flex gap-2">
-                                <Button class="py-5 px-5 text-lg w-fit" @click="
-                                    openPlayer(
-                                        lastWatched.recentEpisodeWatched
-                                            .seasonNum,
-                                        lastWatched.recentEpisodeWatched
-                                            .episodeNum,
-                                    )
-                                    ">
-                                    S{{
-                                        lastWatched.recentEpisodeWatched.seasonNum
-                                    }}E{{
-                                        lastWatched.recentEpisodeWatched.episodeNum
-                                    }}
-                                </Button>
-                                <WatchTogetherButton :title="tvTitle" :episode="{
-                                    season: lastWatched.recentEpisodeWatched.seasonNum,
-                                    episode: lastWatched.recentEpisodeWatched.episodeNum,
-                                }"></WatchTogetherButton>
-                            </div>
+                            <WatchEpisodeActions :title="tvTitle" :season="lastWatched.recentEpisodeWatched.seasonNum"
+                                :episode="lastWatched.recentEpisodeWatched.episodeNum" @play="openPlayer">
+                            </WatchEpisodeActions>
                             <span>Continue watching from the furthest episode you
                                 watched</span>
-                            <div class="flex gap-2">
-                                <Button class="py-5 px-5 text-lg w-fit" @click="
-                                    openPlayer(
-                                        lastWatched?.lastEpisodeWatched
-                                            .seasonNum,
-                                        lastWatched.lastEpisodeWatched
-                                            .episodeNum,
-                                    )
-                                    ">
-                                    S{{
-                                        lastWatched.lastEpisodeWatched.seasonNum
-                                    }}E{{
-                                        lastWatched.lastEpisodeWatched.episodeNum
-                                    }}
-                                </Button>
-                                <WatchTogetherButton :title="tvTitle" :episode="{
-                                    season: lastWatched.lastEpisodeWatched.seasonNum,
-                                    episode: lastWatched.lastEpisodeWatched.episodeNum,
-                                }"></WatchTogetherButton>
-                            </div>
+                            <WatchEpisodeActions :title="tvTitle" :season="lastWatched.lastEpisodeWatched.seasonNum"
+                                :episode="lastWatched.lastEpisodeWatched.episodeNum" @play="openPlayer">
+                            </WatchEpisodeActions>
                         </div>
                     </div>
                 </div>
