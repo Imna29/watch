@@ -231,9 +231,14 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     rememberTakingPart();
     const phase = party?.phase;
     const viewer = me();
-    if (party && phase?.name === "ended" && phase.reason === "left" && phase.by !== viewer && viewer !== null &&
-      party.activeDevices[viewer] === client.identity?.deviceId) {
-      // The other Viewer left the Watch Party this device takes part in: its player stays, and the Viewer chooses.
+    // The other Viewer left the Watch Party this device takes part in: its player stays, and the Viewer chooses.
+    const leftHere =
+      phase?.name === "ended" &&
+      phase.reason === "left" &&
+      viewer !== null &&
+      phase.by !== viewer &&
+      party?.activeDevices[viewer] === client.identity?.deviceId;
+    if (party && phase?.name === "ended" && leftHere) {
       stayedIn = party;
       left = { title: party.title, episode: party.episode, by: phase.by };
     } else if (party && phase?.name === "ended" && (phase.by !== viewer || phase.reason === "finished")) {
