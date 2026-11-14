@@ -363,6 +363,33 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(apart(giorgi, phone)).toBeLessThan(0.5);
     });
 
+    it("before the Title starts is waited for with \"Waiting for Giorgi…\", rather than getting ready forever", () => {
+      const h = createHarness({ syncableSource: source });
+      // Giorgi's player takes a while to load.
+      const laptop = h.device("giorgi", { player: { loadMs: 15 * SECOND } });
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(SECOND);
+      mariam.watchParty.join();
+      h.advance(2 * SECOND);
+      expect(mariam.partySync?.view.gettingReady).toBe(true);
+
+      laptop.closeSite(); // before his player is ready
+      h.advance(10 * SECOND);
+      expect(mariam.partySync?.view).toMatchObject({ gettingReady: false, waitingFor: "giorgi" });
+      expect(mariam.player?.paused).toBe(true);
+
+      // He comes back on another device, and the Title starts for both.
+      const phone = h.device("giorgi");
+      h.advance(15 * SECOND);
+      expect(phone.watchParty.activeHere).toBe(true);
+      expect(mariam.partySync?.view.waitingFor).toBeNull();
+      expect(phone.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(apart(phone, mariam)).toBeLessThan(0.5);
+    });
+
     it("leaves it to her whether a device of hers that was open all along takes part", () => {
       const h = createHarness({ syncableSource: source });
       const giorgi = h.device("giorgi");

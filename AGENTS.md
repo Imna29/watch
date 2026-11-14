@@ -161,7 +161,9 @@ Staying in step (`drift.ts` on the server):
   up to the frozen point; once every player is there, all start again at one
   moment just ahead.
 - An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
-  for the same way, from where it left. A waiting invite stays while the
+  for the same way, from where it left; also before the Title starts (the
+  countdown's ready gate), which then starts once everyone is there instead
+  of "Getting ready…" forever. A waiting invite stays while the
   starter has any device on the site, and ends ("gone") once they have had
   none for 2 minutes (`INVITE_GRACE_MS`).
 - The Device a Viewer takes part from rejoins when it connects again (same

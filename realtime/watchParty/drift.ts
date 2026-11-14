@@ -170,7 +170,10 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
 
   /** Pauses every player at `position`, until `viewer`'s player is there too. */
   function wait(current: WatchPartyState, viewer: Viewer, reason: WaitingReason, position: number) {
-    if (current.phase.name === "playing" || current.phase.name === "paused") resumeTo = current.phase.name;
+    const { phase } = current;
+    // A Watch Party that was about to start starts once everyone is there.
+    if (phase.name === "playing" || phase.name === "paused") resumeTo = phase.name;
+    else if (phase.name === "countdown") resumeTo = "playing";
     publish({
       ...current,
       phase: { name: "waiting", viewer, reason },
@@ -192,8 +195,9 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
   /** `viewer`'s active device went away at server time `since`, and has not come back. */
   function gone(current: WatchPartyState, viewer: Viewer, since: number) {
     const { phase } = current;
-    if (phase.name === "playing" || phase.name === "paused") {
-      // From where the Watch Party was when they went: they miss nothing while they are gone.
+    if (phase.name === "playing" || phase.name === "paused" || phase.name === "countdown") {
+      // From where the Watch Party was when they went: they miss nothing while they are gone. Before
+      // the Title started (a player still loading), it no longer gets ready without them: it waits.
       wait(current, viewer, "disconnected", anchorAt(current.anchor, since).position);
     } else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
       publish({ ...current, phase: { name: "waiting", viewer, reason: "disconnected" } });
