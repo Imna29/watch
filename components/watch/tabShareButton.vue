@@ -34,8 +34,9 @@ function share() {
         <ScreenShareOff :size="18" />
         <span v-if="!compact">Stop Tab Share</span>
     </Button>
-    <Button v-else-if="tabShare.state.value.canStart" class="rounded-full p-2" :severity="compact ? 'secondary' : undefined"
-        :aria-label="startLabel" :title="startLabel" :disabled="tabShare.state.value.starting" @click="share()">
+    <Button v-else-if="tabShare.state.value.canStart" class="rounded-full p-2"
+        :severity="compact ? 'secondary' : undefined" :aria-label="startLabel" :title="startLabel"
+        :disabled="tabShare.state.value.starting" @click="share()">
         <ScreenShare :size="18" />
         <span v-if="!compact">{{ startLabel }}</span>
     </Button>

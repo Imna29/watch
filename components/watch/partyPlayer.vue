@@ -31,7 +31,7 @@ function close() {
 // watches it (`<WatchTabShareView>`). No Syncable Source plays meanwhile, so party sync does not run.
 const tabShare = useTabShare();
 const inTabShare = computed(() => party.value.mode === "tab-share");
-const sharingHere = computed(() => !!party.value.tabShare && party.value.tabShare.sharer === watchParty.state.value.viewer);
+const sharingHere = computed(() => party.value.tabShare?.sharer === watchParty.state.value.viewer);
 const otherName = computed(() => {
     const viewer = watchParty.state.value.viewer;
     return viewer ? VIEWER_NAMES[otherViewer(viewer)] : "the other Viewer";
@@ -183,6 +183,9 @@ watch(chosenSource, (source) => {
                         append-to="self">
                     </Select>
                 </template>
+                <span v-else-if="party.tabShare" class="px-1">
+                    Watching {{ VIEWER_NAMES[party.tabShare.sharer] }}'s tab
+                </span>
                 <WatchTabShareButton></WatchTabShareButton>
             </template>
             <template v-else>

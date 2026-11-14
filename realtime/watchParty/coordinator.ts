@@ -36,7 +36,14 @@ import {
   switchSourceSchema,
 } from "./sourceFallback";
 import { WATCH_PARTY_SOURCES } from "./sources";
-import { afterTabShareStarted, canShareTab, exceptInTabShare, noTabShare, stopTabShareSchema, tabShareSchema } from "./tabShare";
+import {
+  afterTabShareStarted,
+  canShareTab,
+  exceptInTabShare,
+  noTabShare,
+  stopTabShareSchema,
+  tabShareSchema,
+} from "./tabShare";
 
 /** The 3-2-1 before both players start. */
 export const COUNTDOWN_MS = 3000;

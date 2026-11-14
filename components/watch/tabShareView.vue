@@ -62,8 +62,8 @@ const status = computed(() => {
             controlslist="nofullscreen nodownload noplaybackrate noremoteplayback"
             class="pointer-events-auto absolute inset-0 h-full w-full bg-black object-contain"
             :aria-label="`${sharerName}'s shared tab`"></video>
-        <div v-if="call.status === 'out'"
-            class="pointer-events-auto relative flex max-w-md flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4 text-center">
+        <div v-if="call.status === 'out'" class="pointer-events-auto relative flex max-w-md flex-col items-center
+            gap-3 rounded-lg bg-black/80 px-6 py-4 text-center">
             <span class="text-xl">{{ sharerName }} is sharing their tab</span>
             <span class="text-muted-color">It comes over the call: join to watch it.</span>
             <Button @click="join()">{{ call.inCallElsewhere ? "Join here" : "Join call" }}</Button>
@@ -72,13 +72,14 @@ const status = computed(() => {
         <Button v-else-if="needsClick" class="pointer-events-auto relative" @click="play()">
             Play {{ sharerName }}'s tab
         </Button>
-        <p v-if="inCall && !share.sound" class="absolute bottom-4 left-4 max-w-sm rounded-lg bg-black/80 px-3 py-2 text-sm">
+        <p v-if="inCall && !share.sound"
+            class="absolute top-2 left-2 max-w-sm rounded-lg bg-black/80 px-3 py-2 text-sm">
             {{ sharerName }}'s browser shares the picture only, without sound.
         </p>
     </template>
 
-    <div v-else-if="live && share" class="absolute top-2 left-2 flex max-w-sm flex-col gap-1 rounded-lg bg-black/80 px-3 py-2 text-sm"
-        role="status">
+    <div v-else-if="live && share" role="status"
+        class="absolute top-2 left-2 flex max-w-sm flex-col gap-1 rounded-lg bg-black/80 px-3 py-2 text-sm">
         <span>You're sharing this tab with {{ otherName }}.</span>
         <span v-if="!call.other" class="text-muted-color">
             {{ otherName }} isn't in the call yet, and sees your tab once they join.
