@@ -39,3 +39,13 @@ _Avoid_: Screen share, stream
 **Call**:
 The audio/video call between the two Viewers. It exists independently of any Watch Party.
 _Avoid_: Video chat, meeting
+
+## Understanding
+
+**Analysis**:
+Giorgi's short written account of how he understood a movie, for Mariam to grade. A movie has at most one.
+_Avoid_: Review, take, essay, interpretation
+
+**Grade**:
+Mariam's mark for an Analysis: a whole number from -1 to 10, with an optional remark.
+_Avoid_: Rating, score
