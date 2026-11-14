@@ -177,6 +177,9 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
       for (const device of awaySince.keys()) {
         if (!active.has(device) || connected.has(device)) awaySince.delete(device);
       }
+      for (const device of caughtUpAt.keys()) {
+        if (!connected.has(device)) caughtUpAt.delete(device);
+      }
       if (!current) return;
       for (const viewer of VIEWERS) {
         const device = current.activeDevices[viewer];
