@@ -72,6 +72,18 @@ export function useWatchParty() {
   };
 }
 
+const partyPlayerMinimized = ref(false);
+
+/**
+ * Whether the Watch Party player is shrunk to the mini-player in a corner,
+ * so the Viewer can browse while the Watch Party plays on in it. UI state
+ * only: the Watch Party itself does not change. A new Watch Party player
+ * opens full size.
+ */
+export function usePartyPlayerMinimized(): Ref<boolean> {
+  return partyPlayerMinimized;
+}
+
 /** A view with nothing to show (any field not listed is unset, so falsy). */
 const BLANK_VIEW = {
   player: "loading",

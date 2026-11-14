@@ -27,6 +27,12 @@ function close() {
     else watchParty.leave();
 }
 
+// "Minimize": the player shrinks to a corner and plays on, so the Viewer can browse; "Watch together"
+// on another Title then replaces this Watch Party. It opens full size.
+const minimized = usePartyPlayerMinimized();
+minimized.value = false;
+onBeforeUnmount(() => (minimized.value = false));
+
 // Tab Share: the sharer plays any Source here and shares this tab over the Call, and the other Viewer
 // watches it (`<WatchTabShareView>`). No Syncable Source plays meanwhile, so party sync does not run.
 const tabShare = useTabShare();
@@ -102,12 +108,30 @@ watch(() => party.value.source, (source) => {
 watch(chosenSource, (source) => {
     watchParty.switchSource(source);
 });
+
+/** The mini-player's one line: what the Watch Party is doing, or waits for this Viewer to do in the player. */
+const miniStatus = computed(() => {
+    const { left, viewer } = watchParty.state.value;
+    const { countdown, waitingFor, nextEpisode } = view.value;
+    if (left) return `${VIEWER_NAMES[left.by]} left`;
+    if (alone.value) return "Watching alone";
+    if (inTabShare.value) return sharingHere.value ? "Sharing your tab" : `${otherName.value} shares a tab`;
+    if (countdown !== null) return `Starting in ${countdown}`;
+    if (party.value.fallback) return `${failedNames.value} couldn't play it`;
+    if (view.value.player === "failed") return `${sourceName.value} couldn't play it`;
+    if (view.value.clickToResume) return "Click to resume";
+    if (waitingFor) return waitingFor === viewer ? "Catching up…" : `Waiting for ${VIEWER_NAMES[waitingFor]}…`;
+    if (nextEpisode) return `Next episode in ${nextEpisode.secondsLeft}s`;
+    if (view.value.gettingReady) return "Getting ready…";
+    return null;
+});
 </script>
 
 <template>
     <WatchPlayerShell ref="shell" :content-type="party.title.contentType" :tmdb-id="party.title.tmdbId"
         :title="party.title.name" :season="party.episode?.season" :episode="party.episode?.episode"
-        :party-src="shellSrc" @close="close()">
+        :party-src="shellSrc" v-model:minimized="minimized" @close="close()">
+        <template v-if="miniStatus" #mini>{{ miniStatus }}</template>
         <div class="absolute inset-0 flex items-center justify-center" aria-live="polite">
             <div v-if="watchParty.state.value.left"
                 class="pointer-events-auto flex flex-col items-center gap-3 rounded-lg bg-black/80 px-6 py-4">

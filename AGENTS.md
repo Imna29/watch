@@ -123,6 +123,11 @@ Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
 Party ends ("left") and the other device keeps its player open
 (`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
 Party sync stays bound to the Watch Party it opened for.
+"Minimize" shrinks the Watch Party player to a mini-player in the bottom
+left corner (`usePartyPlayerMinimized`, UI state only): the same iframe and
+party sync keep running, its overlays and the Call's dock leave it, and the
+Viewer browses the site. "Watch together" on another Title from there
+replaces the Watch Party (`start` in `device.ts`).
 Staying in step (`drift.ts` on the server):
 - Party sync reports its player's position on the server's clock every
   second (`watchParty:position`). It skips the report while a seek is on its
