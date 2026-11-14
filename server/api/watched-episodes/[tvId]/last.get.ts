@@ -3,14 +3,14 @@ import { db } from "../../../database/db";
 import { watchedEpisodes } from "../../../database/watch-schema";
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
+  const viewer = requireViewer(event);
   const { tvId } = await getValidatedRouterParams(event, tvIdParamsSchema.parse);
 
   const [lastEpisodeWatched] = await db.select()
     .from(watchedEpisodes)
     .where(
       and(
-        eq(watchedEpisodes.userId, session.user.id),
+        eq(watchedEpisodes.viewer, viewer),
         eq(watchedEpisodes.tvShowId, tvId)
       )
     )
@@ -21,7 +21,7 @@ export default defineEventHandler(async (event) => {
     .from(watchedEpisodes)
     .where(
       and(
-        eq(watchedEpisodes.userId, session.user.id),
+        eq(watchedEpisodes.viewer, viewer),
         eq(watchedEpisodes.tvShowId, tvId)
       )
     )

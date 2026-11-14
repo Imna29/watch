@@ -49,7 +49,6 @@ const {
     toggle: toggleFullscreen,
 } = useFullscreen(shell, { autoExit: true });
 
-const { loggedIn } = useAuth();
 const addToSystemPlaylist = useAddToSystemPlaylist();
 const { mutateAsync: addWatchedEpisode } = useAddWatchedEpisode();
 
@@ -58,7 +57,6 @@ const { mutateAsync: addWatchedEpisode } = useAddWatchedEpisode();
 watch(
     playable,
     async (now) => {
-        if (!loggedIn.value) return;
         if (now.kind === "movie") {
             addToSystemPlaylist(WatchPlaylistType.HISTORY, now.tmdbId, WatchPlaylistItemType.MOVIE).catch((error) => {
                 console.error("Failed to record watch history", error);

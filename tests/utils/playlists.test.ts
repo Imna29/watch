@@ -3,7 +3,7 @@ import { WatchPlaylistType, type WatchPlaylist } from "../../models/apiModels/wa
 import { findPlaylistByType } from "../../utils/playlists";
 
 function playlist(id: string, type: WatchPlaylistType): WatchPlaylist {
-  return { id, userId: "u1", name: id, type, createdAt: "", updatedAt: "" };
+  return { id, viewer: "giorgi", name: id, type, createdAt: "", updatedAt: "" };
 }
 
 describe("findPlaylistByType", () => {

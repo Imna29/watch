@@ -6,6 +6,7 @@ import {
   genreIdsSchema,
   playlistParamsSchema,
   seasonParamsSchema,
+  signInBodySchema,
   tmdbIdParamsSchema,
   watchedEpisodeBodySchema,
 } from "../../server/utils/validation";
@@ -71,6 +72,15 @@ describe("body schemas", () => {
     expect(
       watchedEpisodeBodySchema.safeParse({ tvId: -1, seasonNumber: 1, episodeNumber: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe("signInBodySchema", () => {
+  it("takes one password of a sane length", () => {
+    expect(signInBodySchema.parse({ password: "a password" })).toEqual({ password: "a password" });
+    for (const body of [{}, { password: "" }, { password: 42 }, { password: "x".repeat(1025) }, null]) {
+      expect(signInBodySchema.safeParse(body).success).toBe(false);
+    }
   });
 });
 

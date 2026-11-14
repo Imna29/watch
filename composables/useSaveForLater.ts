@@ -2,7 +2,6 @@ import { WatchPlaylistItemType, WatchPlaylistType } from "~/models/apiModels/wat
 
 export function useSaveForLater() {
   const toast = useToast();
-  const { loggedIn } = useAuth();
   const addToSystemPlaylist = useAddToSystemPlaylist();
 
   return async function saveForLater(
@@ -10,16 +9,6 @@ export function useSaveForLater() {
     id: number,
     contentType: WatchPlaylistItemType,
   ) {
-    if (!loggedIn.value) {
-      toast.add({
-        severity: "warn",
-        summary: "Sign in required",
-        detail: "Please sign in to save items for later",
-        life: 3000,
-      });
-      return;
-    }
-
     try {
       await addToSystemPlaylist(WatchPlaylistType.WATCH_LATER, id, contentType);
       toast.add({

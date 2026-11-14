@@ -2,19 +2,19 @@ import { watchedEpisodes } from "../../database/watch-schema";
 import { db } from "../../database/db";
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
+  const viewer = requireViewer(event);
   const { tvId, seasonNumber, episodeNumber } = await readValidatedBody(event, watchedEpisodeBodySchema.parse);
 
   await db.insert(watchedEpisodes)
     .values({
-      userId: session.user.id,
+      viewer,
       tvShowId: tvId,
       seasonNum: seasonNumber,
       episodeNum: episodeNumber,
       watchedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [watchedEpisodes.userId, watchedEpisodes.tvShowId, watchedEpisodes.seasonNum, watchedEpisodes.episodeNum],
+      target: [watchedEpisodes.viewer, watchedEpisodes.tvShowId, watchedEpisodes.seasonNum, watchedEpisodes.episodeNum],
       set: {
         watchedAt: new Date(),
       },

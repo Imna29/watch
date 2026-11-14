@@ -1,29 +1,19 @@
 <script setup lang="ts">
 import { Search, X, Menu } from "@lucide/vue";
+import { VIEWER_NAMES } from "~/models/Viewer";
 
 const watchStore = useWatchStore();
 const route = useRoute();
-const { loggedIn, signOut } = useAuth();
+const { data: viewer } = useViewer();
+const { mutate: signOut, isPending: isSigningOut } = useSignOut();
+const viewerName = computed(() => (viewer.value ? VIEWER_NAMES[viewer.value] : ""));
 
-const handleSignOut = async () => {
-    await signOut({
-        redirectTo: "/login"
-    });
-};
-
-const navItems = computed(() => {
-    const items = [
-        { to: "/watch", label: "Home" },
-        { to: "/watch/movies", label: "Movies" },
-        { to: "/watch/tvs", label: "TV Shows" },
-    ];
-    
-    if (loggedIn.value) {
-        items.push({ to: "/watch/playlist", label: "My lists" });
-    }
-    
-    return items;
-});
+const navItems = [
+    { to: "/watch", label: "Home" },
+    { to: "/watch/movies", label: "Movies" },
+    { to: "/watch/tvs", label: "TV Shows" },
+    { to: "/watch/playlist", label: "My lists" },
+];
 
 const isActiveRoute = (path: string) => route.path === path;
 const isActiveExplore = () => route.name?.toString().includes("explore");
@@ -67,8 +57,9 @@ const isDrawerOpen = ref(false);
                         Explore
                     </div>
                     <Divider></Divider>
-                    <NuxtLink v-if="!loggedIn" to="/login" class="text-muted-color hover:text-color-emphasis">Log In</NuxtLink>
-                    <div v-else @click="handleSignOut" class="text-muted-color hover:text-color-emphasis cursor-pointer">Sign Out</div>
+                    <div v-if="viewerName" class="text-muted-color">Signed in as {{ viewerName }}</div>
+                    <button type="button" :disabled="isSigningOut" @click="signOut()"
+                        class="text-left text-muted-color hover:text-color-emphasis cursor-pointer">Sign out</button>
                     <Popover ref="popOver">
                         <div class="flex flex-col gap-2">
                             <div>
@@ -129,12 +120,10 @@ const isDrawerOpen = ref(false);
         </div>
         <Popover ref="popOverProfile">
             <div class="flex flex-col gap-2">
-                <div v-if="!loggedIn">
-                    <NuxtLink to="/login" class="">Log In</NuxtLink>
-                </div>
-                <div v-else>
-                    <div @click="handleSignOut" class="cursor-pointer">Sign Out</div>
-                </div>
+                <div v-if="viewerName" class="text-muted-color">Signed in as {{ viewerName }}</div>
+                <button type="button" :disabled="isSigningOut" @click="signOut()" class="text-left cursor-pointer">
+                    Sign out
+                </button>
             </div>
         </Popover>
     </div>

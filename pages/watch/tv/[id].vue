@@ -6,12 +6,10 @@ import type LastWatched from "~/models/apiModels/watch/LastWatched";
 
 definePageMeta({
     layout: "watch-layout",
-    auth: false,
 });
 
 const id = Number(useRoute().params.id);
 const saveForLater = useSaveForLater();
-const { loggedIn } = useAuth();
 const playerState = reactive({
     isOpen: false,
     seasonNumber: 1,
@@ -90,7 +88,7 @@ function openAddToPlaylistDialog() {
                                 ? "Watch From Beginning"
                                 : "Watch Now"
                         }}</Button>
-                        <Button v-if="loggedIn" class="py-5 px-5 text-lg" severity="secondary" @click="
+                        <Button class="py-5 px-5 text-lg" severity="secondary" @click="
                             saveForLater(
                                 tvData.name,
                                 tvData.id,
@@ -99,7 +97,7 @@ function openAddToPlaylistDialog() {
                             ">
                             Save for Later
                         </Button>
-                        <Button v-if="loggedIn" class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
+                        <Button class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
                             <ListPlus />
                         </Button>
                     </div>

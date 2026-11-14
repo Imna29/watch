@@ -23,16 +23,4 @@ const initializeSwiper = async () => {
 onBeforeMount(() => {
     initializeSwiper();
 });
-
-const router = useRouter();
-const { user } = useAuth();
-
-watch(user, (user, prevUser) => {
-    if (prevUser && !user) {
-        // user logged out
-        router.push("/watch");
-    }
-});
-
-
 </script>

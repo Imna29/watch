@@ -4,10 +4,8 @@ import { Trash2 } from "@lucide/vue";
 definePageMeta({
     title: "Playlist",
     layout: "watch-layout",
-    auth: false,
 });
 
-const { loggedIn } = useAuth();
 const confirm = useConfirm();
 const toast = useToast();
 
@@ -76,17 +74,7 @@ const deleteSelectedItems = async () => {
 </script>
 
 <template>
-    <div v-if="!loggedIn" class="flex flex-col items-center justify-center py-12">
-        <div class="text-center">
-            <h2 class="text-xl mb-2">Sign in to view this playlist</h2>
-            <p class="text-muted-color mb-4">Access your personal movie and TV show collections</p>
-            <NuxtLink to="/login">
-                <Button>Sign In</Button>
-            </NuxtLink>
-        </div>
-    </div>
-    
-    <div v-else-if="isPending" class="flex justify-center py-8">
+    <div v-if="isPending" class="flex justify-center py-8">
         <span>Loading playlist...</span>
     </div>
     <div v-else-if="playlist">

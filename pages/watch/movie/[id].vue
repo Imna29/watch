@@ -5,13 +5,11 @@ import { WatchPlaylistItemType } from "~/models/apiModels/watch/Playlist";
 
 definePageMeta({
     layout: "watch-layout",
-    auth: false,
 });
 
 const id = Number(useRoute().params.id);
 const saveForLater = useSaveForLater();
 const isPlayerOpen = ref<boolean>(false);
-const { loggedIn } = useAuth();
 
 const { data: movieData, isPending, error } = useMovie(id);
 
@@ -82,7 +80,7 @@ function openAddToPlaylistDialog() {
                     <div class="mt-4">{{ movieData.overview }}</div>
                     <div class="mt-4 flex gap-2 place-items-center">
                         <Button class="py-5 px-5 text-lg" @click="isPlayerOpen = !isPlayerOpen">Watch Now</Button>
-                        <Button v-if="loggedIn" class="py-5 px-5 text-lg" severity="secondary" @click="
+                        <Button class="py-5 px-5 text-lg" severity="secondary" @click="
                             saveForLater(
                                 movieData.title,
                                 id,
@@ -91,7 +89,7 @@ function openAddToPlaylistDialog() {
                             ">
                             Save for Later
                         </Button>
-                        <Button v-if="loggedIn" class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
+                        <Button class="p-1" severity="secondary" text outlined @click="openAddToPlaylistDialog()">
                             <ListPlus />
                         </Button>
                     </div>

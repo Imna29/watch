@@ -1,16 +1,18 @@
 # watch
 
-A Nuxt 4 single-page app for browsing movies and TV shows (TMDB metadata) with
-accounts, playlists and watched-episode tracking.
+A private Nuxt 4 single-page app where Giorgi and Mariam browse movies and TV
+shows (TMDB metadata), each signing in with their own password, with their own
+playlists and watched-episode tracking.
 
 ## Setup
 
 1. `bun install`
 2. Copy `.env.example` to `.env`. The `DB_*` values already match the local
-   Docker Postgres; fill in the rest.
+   Docker Postgres; fill in the rest. Set each Viewer's password hash with
+   `bun run hash-password` (run it once per Viewer, with different passwords).
 3. Start the local Postgres and create the schema:
    `docker compose -f compose.dev.yaml up -d --wait` then `bun run db:migrate`
-4. `bun run dev` and open http://localhost:3000
+4. `bun run dev`, open http://localhost:3000 and sign in with either password
 
 ## Commands
 
@@ -23,6 +25,7 @@ accounts, playlists and watched-episode tracking.
 | Preview build | `bun run preview` |
 | Run the production build (Bun) | `bun run start` |
 | Stop the local Postgres | `docker compose -f compose.dev.yaml down` (`-v` wipes data) |
+| Hash a Viewer's password | `bun run hash-password` |
 
 Database schema lives in `server/database/`; migrations in `drizzle/` are
 generated with `bun run db:generate` and applied with `bun run db:migrate`.

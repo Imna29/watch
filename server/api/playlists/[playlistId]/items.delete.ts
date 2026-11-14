@@ -3,10 +3,10 @@ import { db } from "../../../database/db";
 import { watchPlaylistItems } from "../../../database/watch-schema";
 
 export default defineEventHandler(async (event) => {
-  const session = await requireAuthSession(event);
+  const viewer = requireViewer(event);
   const { playlistId } = await getValidatedRouterParams(event, playlistParamsSchema.parse);
   const { itemIds } = await readValidatedBody(event, deletePlaylistItemsBodySchema.parse);
-  await requireOwnedPlaylist(playlistId, session.user.id);
+  await requireOwnedPlaylist(playlistId, viewer);
 
   if (itemIds.length === 0) {
     return { deletedCount: 0 };
