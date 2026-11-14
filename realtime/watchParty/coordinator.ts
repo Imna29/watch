@@ -21,6 +21,8 @@ import type {
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
+import { takesPlaybackChanges } from "./protocol";
+import { afterPlaybackChange, playbackSchema } from "./sharedControls";
 import { WATCH_PARTY_SOURCES } from "./sources";
 
 /** The 3-2-1 before both players start. */
@@ -212,6 +214,16 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           schema: partyIntentSchema("watchParty:cancel") satisfies z.ZodType<CancelWatchPartyMessage>,
           handle(from, { partyId }) {
             if (party?.id === partyId && mayEnd(from, party)) end("cancelled", from.viewer);
+          },
+        },
+
+        // Shared controls: play, pause, seek or speed, from the device a Viewer takes part from.
+        "watchParty:playback": {
+          schema: playbackSchema,
+          handle(from, { partyId, change }) {
+            if (party?.id !== partyId || party.activeDevices[from.viewer] !== from.id) return;
+            if (!takesPlaybackChanges(party.phase)) return;
+            publish({ ...party, ...afterPlaybackChange(party, change, context.now()), lastChangeBy: from.viewer });
           },
         },
       },

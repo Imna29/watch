@@ -109,6 +109,30 @@ export interface PlayerStatusMessage {
   status: "ready";
 }
 
+/**
+ * A change a Viewer made in the Source's own controls, at `position`
+ * seconds into the Title (for "seek": the position it moved to). "rate"
+ * (the speed) only comes from a Source whose adapter `canSetRate`.
+ */
+export type PlaybackChange =
+  | { kind: "play" | "pause" | "seek"; position: number }
+  | { kind: "rate"; position: number; rate: number };
+
+/**
+ * Whether Viewers control playback in this phase: both are in and the Title
+ * has started. In any other phase each player just follows the shared state.
+ */
+export function takesPlaybackChanges(phase: WatchPartyPhase) {
+  return phase.name === "playing" || phase.name === "paused";
+}
+
+/** The Viewer changed playback in this device's player: apply it for both Viewers. */
+export interface PlaybackMessage {
+  type: "watchParty:playback";
+  partyId: string;
+  change: PlaybackChange;
+}
+
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
 export interface WatchPartyMessage {
   type: "watchParty";
@@ -125,6 +149,7 @@ export type WatchPartyDeviceMessage =
   | StartWatchPartyMessage
   | JoinWatchPartyMessage
   | CancelWatchPartyMessage
-  | PlayerStatusMessage;
+  | PlayerStatusMessage
+  | PlaybackMessage;
 
 export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;

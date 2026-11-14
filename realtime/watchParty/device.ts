@@ -7,7 +7,7 @@
 import type { Viewer } from "../../models/Viewer";
 import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
-import type { Episode, WatchPartyEndReason, WatchPartyState } from "./protocol";
+import type { Episode, PlaybackChange, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
 /** How a Watch Party this device knew about ended, told to the Viewer who did not end it. */
 export interface EndedNotice {
@@ -51,6 +51,8 @@ export interface DeviceWatchParty {
   dismissEnded(): void;
   /** Party sync: this device's player loaded Watch Party `partyId`'s Title. */
   playerReady(partyId: string): void;
+  /** Party sync: the Viewer changed playback in this device's player. */
+  playback(partyId: string, change: PlaybackChange): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -161,6 +163,10 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
     playerReady(partyId) {
       client.send({ type: "watchParty:player", partyId, status: "ready" });
+    },
+
+    playback(partyId, change) {
+      client.send({ type: "watchParty:playback", partyId, change });
     },
 
     subscribe(listener) {

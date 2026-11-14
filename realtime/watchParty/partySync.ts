@@ -14,7 +14,7 @@ import type { Playable } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
-import type { PlaybackAnchor, WatchPartyState } from "./protocol";
+import { takesPlaybackChanges, type PlaybackAnchor, type WatchPartyState } from "./protocol";
 import type { PlayerEvent, PlayerFrame, SyncableSourceAdapter } from "./sources/adapter";
 import { hasAdapter, SYNCABLE_SOURCE_ADAPTERS } from "./sources";
 
@@ -58,6 +58,65 @@ export function playableOf(party: Pick<WatchPartyState, "title" | "episode">): P
     : { kind: "movie", tmdbId: party.title.tmdbId };
 }
 
+/** How long a player may take to report a command; after that, the command is taken to have done nothing. */
+const ECHO_TIMEOUT_MS = 10_000;
+
+/** What the player reports when it carries out one of party sync's commands. */
+type Echo =
+  | { type: "play" | "pause" }
+  | { type: "seeked"; position: number }
+  | { type: "ratechange"; rate: number };
+
+/** Commands that report on the same thing: a later one decides it. */
+function channelOf(type: Echo["type"]) {
+  return type === "play" || type === "pause" ? "playing" : type;
+}
+
+/**
+ * Echo suppression. A Source's player reports the commands party sync gives
+ * it ("play", "pause", "seeked", "ratechange") exactly as it reports the
+ * Viewer's own presses, so party sync notes what each command will report.
+ * A report that matches is an echo, never sent on as the Viewer's change.
+ */
+function createEchoes(clock: Clock) {
+  let expected: (Echo & { until: number })[] = [];
+
+  function matches(echo: Echo, event: PlayerEvent) {
+    if (echo.type !== event.type) return false;
+    if (echo.type === "seeked" && event.type === "seeked") {
+      return Math.abs(echo.position - event.position) <= SEEK_TOLERANCE_S;
+    }
+    if (echo.type === "ratechange" && event.type === "ratechange") return echo.rate === event.rate;
+    return true;
+  }
+
+  return {
+    expect(echo: Echo) {
+      expected.push({ ...echo, until: clock.now() + ECHO_TIMEOUT_MS });
+    },
+
+    /**
+     * Whether `event` echoes a command; null when it does not. The player
+     * reports in order, so commands on the same thing given before that one
+     * will not be reported any more: they are forgotten too. `latest`: no
+     * later command on the same thing is still on its way.
+     */
+    heard(event: PlayerEvent): { latest: boolean } | null {
+      const now = clock.now();
+      expected = expected.filter((echo) => echo.until > now);
+      const index = expected.findIndex((echo) => matches(echo, event));
+      if (index === -1) return null;
+      const channel = channelOf(expected[index]!.type);
+      expected = expected.filter((echo, i) => i > index || channelOf(echo.type) !== channel);
+      return { latest: !expected.some((echo) => channelOf(echo.type) === channel) };
+    },
+
+    clear() {
+      expected = [];
+    },
+  };
+}
+
 /** Where `anchor` says the player should be at `serverTime`. */
 export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
   const playing = anchor.playing && serverTime >= anchor.serverTime;
@@ -75,6 +134,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
    * device's clock.
    */
   const player = { paused: true, position: 0, at: clock.now(), rate: 1 };
+  const echoes = createEchoes(clock);
   let countdownTimer: TimerId | null = null;
   /** The Watch Party this device last said its player is ready for. */
   let reportedReadyFor: string | null = null;
@@ -108,16 +168,26 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     const wanted = anchorAt(party.anchor, client.serverNow());
     if (Math.abs(playerPosition() - wanted.position) > SEEK_TOLERANCE_S) {
       adapter.seek(wanted.position);
+      echoes.expect({ type: "seeked", position: wanted.position });
       playerIsAt(wanted.position);
     }
     if (wanted.playing && player.paused) {
       adapter.play();
+      echoes.expect({ type: "play" });
       playerIsAt(playerPosition());
       player.paused = false;
     } else if (!wanted.playing && !player.paused) {
       adapter.pause();
+      echoes.expect({ type: "pause" });
       playerIsAt(playerPosition());
       player.paused = true;
+    }
+    // On a Source that cannot change speed, the player stays at its own.
+    if (adapter.canSetRate && player.rate !== party.anchor.rate) {
+      adapter.setRate(party.anchor.rate);
+      echoes.expect({ type: "ratechange", rate: party.anchor.rate });
+      playerIsAt(playerPosition());
+      player.rate = party.anchor.rate;
     }
   }
 
@@ -126,6 +196,8 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       case "ready":
         setView({ player: "ready" });
         reportReady();
+        // The embed URL told the player to autoplay: its "play" is that command's echo.
+        echoes.expect({ type: "play" });
         adapter?.requestStatus();
         return apply();
       case "status":
@@ -134,20 +206,68 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
         return apply();
       case "play":
       case "pause":
-        playerIsAt(playerPosition());
-        player.paused = event.type === "pause";
-        return apply();
-      case "seeked":
+      case "ratechange":
+        return heardPlayback(event);
+      case "seeked": {
+        playerIsAt(event.position);
+        if (echoes.heard(event)) return;
+        if (!sentAsViewerChange(event)) apply();
+        return;
+      }
       case "timeupdate":
         playerIsAt(event.position);
-        return;
-      case "ratechange":
-        playerIsAt(playerPosition());
-        player.rate = event.rate;
         return;
       case "error":
         if (event.reason === "not-ready") setView({ player: "failed" });
         return;
+    }
+  }
+
+  /**
+   * The player started, paused or changed speed: because party sync told it
+   * to (an echo), or because the Viewer did it in the Source's controls.
+   */
+  function heardPlayback(event: Extract<PlayerEvent, { type: "play" | "pause" | "ratechange" }>) {
+    playerIsAt(playerPosition());
+    const before = { paused: player.paused, rate: player.rate };
+    const echo = echoes.heard(event);
+    // An echo of an older command leaves the player as the newer ones (still on their way) will have it.
+    if (!echo || echo.latest) {
+      if (event.type === "ratechange") player.rate = event.rate;
+      else player.paused = event.type === "pause";
+    }
+    const changed = player.paused !== before.paused || player.rate !== before.rate;
+    if (!echo && changed && sentAsViewerChange(event)) return;
+    apply();
+  }
+
+  /**
+   * Shared controls: when `event` is the Viewer's own change in the Source's
+   * controls (it is no echo, and it changed the player), sends it to the
+   * coordinator and returns true. The player then stays where the Viewer put
+   * it; the new shared state follows. Outside playing and paused, nothing
+   * is sent: the player follows the shared state.
+   */
+  function sentAsViewerChange(event: PlayerEvent): boolean {
+    const party = live();
+    if (!party || view.player !== "ready" || !takesPlaybackChanges(party.phase)) return false;
+    switch (event.type) {
+      case "play":
+      case "pause":
+        watchParty.playback(party.id, { kind: event.type, position: playerPosition() });
+        return true;
+      case "seeked": {
+        const wanted = anchorAt(party.anchor, client.serverNow());
+        if (Math.abs(event.position - wanted.position) <= SEEK_TOLERANCE_S) return false;
+        watchParty.playback(party.id, { kind: "seek", position: event.position });
+        return true;
+      }
+      case "ratechange":
+        if (!adapter?.canSetRate) return false;
+        watchParty.playback(party.id, { kind: "rate", position: playerPosition(), rate: event.rate });
+        return true;
+      default:
+        return false;
     }
   }
 

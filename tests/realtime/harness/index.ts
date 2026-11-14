@@ -33,7 +33,11 @@ import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
-import { WATCH_PARTY_SOURCES, type AdaptedSourceId } from "../../../realtime/watchParty/sources";
+import {
+  SYNCABLE_SOURCE_ADAPTERS,
+  WATCH_PARTY_SOURCES,
+  type AdaptedSourceId,
+} from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
 import { createFakeHistory } from "./fakeHistory";
 import { createFakeServer, type DeviceTraffic, type Link } from "./fakeNetwork";
@@ -89,6 +93,18 @@ export function syncableSourcesUnderTest(): AdaptedSourceId[] {
     throw new Error(`Add a fake player for ${missing.join(", ")} in tests/realtime/harness/fakeSourcePlayers.ts`);
   }
   return [...WATCH_PARTY_SOURCES];
+}
+
+/**
+ * Whether the adapter of `source` can change the playback speed
+ * (`canSetRate`; VidFast's cannot). Speed scenarios run only where it can:
+ * `it.runIf(sourceCanSetRate(source))(...)`.
+ */
+export function sourceCanSetRate(source: AdaptedSourceId): boolean {
+  const clock = createFakeClock();
+  const adapter = SYNCABLE_SOURCE_ADAPTERS[source]({ frame: createFakeFrame(clock), clock });
+  adapter.destroy();
+  return adapter.canSetRate;
 }
 
 export interface HarnessOptions {
