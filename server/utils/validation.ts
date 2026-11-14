@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tmdbIdNumberSchema as tmdbId } from "~/utils/tmdbId";
+import { ANALYSIS_TEXT_MAX_LENGTH } from "~/models/apiModels/watch/Analysis";
 
 // Season 0 is "Specials" on TMDB, so 0 is valid.
 const seasonNumber = z.number().int().min(0).max(10_000);
@@ -23,6 +24,15 @@ export const seasonParamsSchema = z.object({
 
 export const tvIdParamsSchema = z.object({
   tvId: tmdbIdSchema,
+});
+
+export const movieIdParamsSchema = z.object({
+  movieId: tmdbIdSchema,
+});
+
+// Plain text: trimmed at both ends, line breaks inside kept as typed.
+export const analysisBodySchema = z.object({
+  text: z.string().trim().min(1).max(ANALYSIS_TEXT_MAX_LENGTH),
 });
 
 export const addPlaylistItemBodySchema = z.object({

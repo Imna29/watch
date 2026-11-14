@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   addPlaylistItemBodySchema,
+  analysisBodySchema,
   deletePlaylistItemsBodySchema,
   discoverQuerySchema,
   genreIdsSchema,
+  movieIdParamsSchema,
   playlistParamsSchema,
   seasonParamsSchema,
   signInBodySchema,
@@ -72,6 +74,35 @@ describe("body schemas", () => {
     expect(
       watchedEpisodeBodySchema.safeParse({ tvId: -1, seasonNumber: 1, episodeNumber: 1 }).success,
     ).toBe(false);
+  });
+});
+
+describe("movieIdParamsSchema", () => {
+  it("holds a movie id to the TMDB id rules", () => {
+    expect(movieIdParamsSchema.parse({ movieId: "550" })).toEqual({ movieId: 550 });
+    for (const movieId of ["abc", "", "-1", "0", "1.5", "99999999999"]) {
+      expect(movieIdParamsSchema.safeParse({ movieId }).success).toBe(false);
+    }
+  });
+});
+
+describe("analysisBodySchema", () => {
+  it("trims the text and keeps its line breaks", () => {
+    expect(analysisBodySchema.parse({ text: "  First thought.\n\nSecond thought.\n  " })).toEqual({
+      text: "First thought.\n\nSecond thought.",
+    });
+  });
+
+  it("takes up to 2,000 characters, counted after trimming", () => {
+    expect(analysisBodySchema.safeParse({ text: "x".repeat(2000) }).success).toBe(true);
+    expect(analysisBodySchema.safeParse({ text: ` ${"x".repeat(2000)}\n` }).success).toBe(true);
+    expect(analysisBodySchema.safeParse({ text: "x".repeat(2001) }).success).toBe(false);
+  });
+
+  it("refuses an empty Analysis", () => {
+    for (const body of [{ text: "" }, { text: "  \n\t " }, {}, { text: 42 }, null]) {
+      expect(analysisBodySchema.safeParse(body).success).toBe(false);
+    }
   });
 });
 
