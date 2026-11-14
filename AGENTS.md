@@ -68,6 +68,16 @@ and imported explicitly. A feature lives in `realtime/<feature>/`:
 - Tests: seam 1, `tests/realtime/harness` (real coordinator and devices, fake
   network and clock). Assert what devices receive.
 
+The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
+- `sources/`: one Syncable Source adapter per Source (`postMessage` both ways,
+  origins checked against `utils/sources.ts`), listed in `sources/index.ts`.
+- `partySync.ts`: on the device that takes part, joins an adapter to the
+  connection (`usePartySync` in `composables/useWatchParty.ts`).
+The coordinator records History through the `HistoryPort` that
+`server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
+once per Syncable Source with an adapter: a new one needs a fake player that
+speaks its format in `tests/realtime/harness/fakeSourcePlayers.ts`.
+
 ## Safety
 - `.env` holds live credentials. Never print, copy, or commit it.
 - Point `db:push`, `db:migrate`, `db:studio` and any test data at the local
