@@ -1,0 +1,29 @@
+# Secrets never go into an image: the stack passes them in at run time.
+.env
+.env.*
+!.env.example
+
+# Local dependencies and build output: the image installs and builds its own.
+node_modules
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+*.log
+
+# Not needed to build the app, and would only bust the build cache.
+Dockerfile
+.dockerignore
+compose*.yaml
+deploy
+docs
+tests
+*.md
+.git
+.github
+.claude
+.idea
+.fleet
+.DS_Store
