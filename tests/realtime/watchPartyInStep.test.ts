@@ -214,4 +214,46 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(mariam.partySync?.view.nextEpisode?.episode).toEqual({ season: 1, episode: 2 });
     });
   });
+
+  describe("a Viewer who reloads the page", () => {
+    it("rejoins at the shared position, and the other Viewer watches on", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      const reloaded = mariam.reload();
+      const seen = track(h, 15 * SECOND, {
+        giorgiPaused: () => giorgi.player!.paused,
+        waitingFor: () => giorgi.partySync!.view.waitingFor,
+      });
+
+      expect(values(seen.giorgiPaused)).toEqual([false]);
+      expect(values(seen.waitingFor)).toEqual([null]);
+      expect(mariam.player).toBeNull();
+      expect(reloaded.watchParty.activeHere).toBe(true);
+      expect(reloaded.player?.paused).toBe(false);
+      expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
+    });
+
+    it("is waited for when the page takes a while, and both resume together from where she left", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+      const leftAt = giorgi.player!.position;
+
+      const reloaded = mariam.reload({ takesMs: 10 * SECOND });
+      h.advance(8 * SECOND);
+      expect(giorgi.player?.paused).toBe(true);
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
+      // Back to where she left (VidFast seeks to whole seconds).
+      expect(Math.abs(giorgi.player!.position - leftAt)).toBeLessThan(1);
+      const waitingAt = giorgi.player!.position;
+
+      const seen = track(h, 20 * SECOND, {
+        giorgiPlaying: () => !giorgi.player!.paused,
+        mariamPlaying: () => reloaded.player?.paused === false,
+      });
+      expect(values(seen.giorgiPlaying)).toEqual([false, true]);
+      expect(seen.mariamPlaying.at(-1)).toEqual({ at: seen.giorgiPlaying.at(-1)!.at, value: true });
+      const resumedFor = (h.clock.now() - seen.giorgiPlaying.at(-1)!.at) / SECOND;
+      expect(giorgi.player!.position).toBeCloseTo(waitingAt + resumedFor, 0);
+      expect(apart(giorgi, reloaded)).toBeLessThan(0.5);
+    });
+  });
 });

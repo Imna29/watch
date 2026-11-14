@@ -256,6 +256,10 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
         context.send(device.id, { type: "watchParty", party });
       },
 
+      disconnected(device) {
+        inStep.disconnected(device);
+      },
+
       tick() {
         if (party?.phase.name === "countdown" && party.phase.endsAt !== null && context.now() >= party.phase.endsAt) {
           publish({ ...party, phase: { name: "playing" } });

@@ -85,6 +85,13 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
   /**
+   * The Viewer reloads the page: this page goes, and the returned one opens
+   * in the same browser tab (the same Device: its device key, network and
+   * clock), `takesMs` later. `player` changes how its Source's player
+   * behaves; the rest of the options stay.
+   */
+  reload(options?: { takesMs?: number; player?: FakePlayerOptions }): TestDevice;
+  /**
    * Changes this device's one-way network delay. Messages already on their
    * way keep theirs, so a shorter delay lets later messages overtake them.
    */
@@ -142,7 +149,7 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
   const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};
 
-  return {
+  const harness = {
     clock,
     /** The server process: `stop()` and `start()` it to simulate a restart. */
     server,
@@ -163,70 +170,103 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
     device(viewer: Viewer, options: TestDeviceOptions = {}): TestDevice {
       counts[viewer] = (counts[viewer] ?? 0) + 1;
       const name = `${viewer}${counts[viewer]}`;
-      const link: Link = { delayMs: options.delayMs ?? DEFAULT_DELAY_MS, dropped: false };
-      const traffic = { name, received: [], connectionAttempts: [] };
-      const deviceClock = clock.skewed(options.clockSkewMs ?? 0);
-      const media = mediaWorld.platformFor(name, deviceClock);
-      const device = createRealtimeDevice({
-        url: "ws://watch.test/realtime",
-        openSocket: server.socketsFor(viewer, link, traffic),
-        clock: deviceClock,
-        deviceKey: name,
-        call: media,
-      });
-      device.client.start();
-
-      // The Watch Party player, shown for `playerParty`, one per Watch Party (layouts/watchLayout.vue).
-      let partyPlayer: { partyId: string; frame: FakeFrame; partySync: PartySync } | null = null;
-      device.watchParty.subscribe(() => {
-        const shown = device.watchParty.playerParty;
-        if (partyPlayer && partyPlayer.partyId !== shown?.id) {
-          partyPlayer.partySync.destroy();
-          partyPlayer.frame.remove();
-          partyPlayer = null;
-        }
-        if (shown && !partyPlayer) {
-          const frame = createFakeFrame(deviceClock, options.player);
-          const partySync = createPartySync({
-            watchParty: device.watchParty,
-            client: device.client,
-            clock: deviceClock,
-            frame,
-            episodes,
-          });
-          partyPlayer = { partyId: shown.id, frame, partySync };
-        }
-      });
-
-      return {
-        ...device,
+      const tab: Tab = {
         name,
         viewer,
-        clock: deviceClock,
-        media,
-        get partySync() {
-          return partyPlayer?.partySync ?? null;
-        },
-        get player() {
-          return partyPlayer?.frame.player ?? null;
-        },
-        received: traffic.received,
-        connectionAttempts: traffic.connectionAttempts,
-        closeSite() {
-          device.client.stop();
-        },
-        setDelay(ms) {
-          link.delayMs = ms;
-        },
-        drop() {
-          link.dropped = true;
-        },
-        restore() {
-          link.dropped = false;
-        },
+        link: { delayMs: options.delayMs ?? DEFAULT_DELAY_MS, dropped: false },
+        clock: clock.skewed(options.clockSkewMs ?? 0),
+        pages: 0,
       };
+      return openPage(tab, options.player);
     },
   };
+
+  /** One page of the site in `tab`, signed in and connecting (after `opensInMs`). */
+  function openPage(tab: Tab, playerOptions: FakePlayerOptions | undefined, opensInMs = 0): TestDevice {
+    const { name, viewer, link, clock: deviceClock } = tab;
+    tab.pages += 1;
+    const traffic = { name, received: [], connectionAttempts: [] };
+    // Each page has its own browser media.
+    const media = mediaWorld.platformFor(tab.pages === 1 ? name : `${name}#${tab.pages}`, deviceClock);
+    const device = createRealtimeDevice({
+      url: "ws://watch.test/realtime",
+      openSocket: server.socketsFor(viewer, link, traffic),
+      clock: deviceClock,
+      deviceKey: name,
+      call: media,
+    });
+    if (opensInMs > 0) clock.setTimeout(() => device.client.start(), opensInMs);
+    else device.client.start();
+
+    // The Watch Party player, shown for `playerParty`, one per Watch Party (layouts/watchLayout.vue).
+    let partyPlayer: { partyId: string; frame: FakeFrame; partySync: PartySync } | null = null;
+    function closePlayer() {
+      partyPlayer?.partySync.destroy();
+      partyPlayer?.frame.remove();
+      partyPlayer = null;
+    }
+    device.watchParty.subscribe(() => {
+      const shown = device.watchParty.playerParty;
+      if (partyPlayer && partyPlayer.partyId !== shown?.id) closePlayer();
+      if (shown && !partyPlayer) {
+        const frame = createFakeFrame(deviceClock, playerOptions);
+        const partySync = createPartySync({
+          watchParty: device.watchParty,
+          client: device.client,
+          clock: deviceClock,
+          frame,
+          episodes,
+        });
+        partyPlayer = { partyId: shown.id, frame, partySync };
+      }
+    });
+
+    return {
+      ...device,
+      name,
+      viewer,
+      clock: deviceClock,
+      media,
+      get partySync() {
+        return partyPlayer?.partySync ?? null;
+      },
+      get player() {
+        return partyPlayer?.frame.player ?? null;
+      },
+      received: traffic.received,
+      connectionAttempts: traffic.connectionAttempts,
+      closeSite() {
+        device.client.stop();
+      },
+      reload({ takesMs = 0, player = playerOptions } = {}) {
+        device.client.stop();
+        closePlayer();
+        return openPage(tab, player, takesMs);
+      },
+      setDelay(ms) {
+        link.delayMs = ms;
+      },
+      drop() {
+        link.dropped = true;
+      },
+      restore() {
+        link.dropped = false;
+      },
+    };
+  }
+
+  return harness;
+}
+
+/** One browser tab of a test device: what stays when its page reloads. */
+interface Tab {
+  /** Also its device key. */
+  name: string;
+  viewer: Viewer;
+  link: Link;
+  clock: Clock;
+  /** How many pages it has opened. */
+  pages: number;
 }
 
 export type Harness = ReturnType<typeof createHarness>;

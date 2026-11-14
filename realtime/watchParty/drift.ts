@@ -160,6 +160,11 @@ export function keepInStep({ context, party, publish }: DriftOptions) {
       return { phase: { ...phase, reason: "behind" } };
     },
 
+    /** A device's connection closed: when it is an active device, it is gone from now. */
+    disconnected(device: Device) {
+      if (party()?.activeDevices[device.viewer] === device.id) awaySince.set(device.id, context.now());
+    },
+
     /** Called on every clock tick: waits for a Viewer whose active device has been gone too long. */
     tick() {
       const current = party();
