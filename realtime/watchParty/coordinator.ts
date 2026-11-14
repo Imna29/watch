@@ -141,10 +141,10 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     }
 
     /**
-     * `device` joins from another device than the one its Viewer takes part
-     * from, and becomes their active device. The device it took over from
-     * sees that in the shared state and stops its player. Playback goes on
-     * undisturbed: the new device's player starts at the shared position.
+     * A Viewer who takes part from one device joins from `device`, which
+     * becomes their active device. The device it took over from sees that in
+     * the shared state and stops its player. Playback goes on undisturbed:
+     * the new device's player starts at the shared position.
      */
     function takeOver(device: Device, current: WatchPartyState) {
       const previous = current.activeDevices[device.viewer];
