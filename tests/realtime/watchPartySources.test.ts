@@ -122,5 +122,24 @@ describe.each(syncableSourcesUnderTest())("Syncable Sources in a Watch Party on 
       expect(giorgi.player?.paused).toBe(false);
       expect(giorgi.player!.position).toBeCloseTo(mariam.player!.position, 0);
     });
+
+    it("waits for both players to load the new Source, even when one only now reports the old one", () => {
+      const h = createHarness({ syncableSource: source, fallbackSources: [next] });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam", { delayMs: 2 * SECOND, player: { loadMs: 4 * SECOND } });
+      h.advance(5 * SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      mariam.watchParty.join();
+      // Mariam's player has just loaded on the first Source; the server hears it only after the switch below.
+      h.advance(9 * SECOND);
+      expect(mariam.player).toMatchObject({ ready: true, sourceId: source });
+      giorgi.watchParty.switchSource(next);
+
+      for (let waited = 0; waited < 30 * SECOND && !(giorgi.player!.position > 0.5); waited += 50) h.advance(50);
+      expect(giorgi.player).toMatchObject({ sourceId: next, paused: false });
+      expect(mariam.player).toMatchObject({ sourceId: next, ready: true, paused: false });
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 1);
+    });
   });
 });
