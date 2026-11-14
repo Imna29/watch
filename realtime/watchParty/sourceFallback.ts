@@ -7,8 +7,8 @@
  * moves both players there at the current position.
  */
 import { z } from "zod";
-import { partyIntentSchema } from "./intentSchema";
 import { SOURCES, type SourceId } from "../../utils/sources";
+import { partyIntentSchema } from "./intentSchema";
 import { anchorAt } from "./partySync";
 import type { SourceFallback, SwitchSourceMessage, WatchPartyState } from "./protocol";
 import { canSetRate } from "./sources";

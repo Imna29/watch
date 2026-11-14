@@ -47,6 +47,30 @@ export interface MessageHandler<T extends DeviceMessageType> {
 export type MessageHandlers = { [T in DeviceMessageType]?: MessageHandler<T> };
 
 /**
+ * `handlers`, except that a message of a type that `guarded` holds for is
+ * handled only when `allow(from)`, and ignored otherwise. Other types are
+ * handled as they were.
+ */
+export function guardHandlers(
+  handlers: MessageHandlers,
+  guarded: (type: DeviceMessageType) => boolean,
+  allow: (from: Device) => boolean,
+): MessageHandlers {
+  const result: Record<string, MessageHandler<DeviceMessageType>> = {};
+  for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
+    result[type] = !guarded(type)
+      ? handler
+      : {
+          schema: handler.schema,
+          handle(from, message) {
+            if (allow(from)) handler.handle(from, message);
+          },
+        };
+  }
+  return result as MessageHandlers;
+}
+
+/**
  * One feature of the realtime system, such as presence. It owns the device
  * message types in `handlers` (no two features may handle the same type), is
  * told about devices connecting and disconnecting (after the registry

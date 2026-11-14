@@ -16,10 +16,10 @@
  * `./tabShareDevice.ts`.
  */
 import { z } from "zod";
-import { partyIntentSchema } from "./intentSchema";
 import type { Viewer } from "../../models/Viewer";
-import type { MessageHandler, MessageHandlers } from "../coordinator";
+import { guardHandlers, type MessageHandlers } from "../coordinator";
 import type { DeviceMessageType } from "../protocol";
+import { partyIntentSchema } from "./intentSchema";
 import { anchorAt } from "./partySync";
 import type { StopTabShareMessage, TabShare, TabShareMessage, WatchPartyState } from "./protocol";
 import { sourceIdSchema } from "./sourceFallback";
@@ -78,16 +78,9 @@ const ABOUT_THE_SYNCABLE_PLAYER: ReadonlySet<DeviceMessageType> = new Set([
 
 /** `handlers`, minus every intent about a Syncable Source's player while `current()` is in Tab Share. */
 export function exceptInTabShare(current: () => WatchPartyState | null, handlers: MessageHandlers): MessageHandlers {
-  const guarded: Record<string, MessageHandler<DeviceMessageType>> = {};
-  for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
-    guarded[type] = !ABOUT_THE_SYNCABLE_PLAYER.has(type)
-      ? handler
-      : {
-          schema: handler.schema,
-          handle(from, message) {
-            if (current()?.mode !== "tab-share") handler.handle(from, message);
-          },
-        };
-  }
-  return guarded as MessageHandlers;
+  return guardHandlers(
+    handlers,
+    (type) => ABOUT_THE_SYNCABLE_PLAYER.has(type),
+    () => current()?.mode !== "tab-share",
+  );
 }

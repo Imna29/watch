@@ -29,8 +29,8 @@ import { z } from "zod";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
-import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
 import { partyIntentSchema } from "./intentSchema";
+import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
 import { noTabShare } from "./tabShare";
 
 /** How often party sync reports where its player is. */

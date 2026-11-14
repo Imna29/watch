@@ -9,7 +9,7 @@ import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { SourceId } from "../../utils/sources";
 import { tmdbIdNumberSchema } from "../../utils/tmdbId";
-import type { Device, FeatureFactory, MessageHandler, MessageHandlers } from "../coordinator";
+import { guardHandlers, type Device, type FeatureFactory, type MessageHandlers } from "../coordinator";
 import type { DeviceKey } from "../connection/protocol";
 import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
@@ -214,18 +214,11 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
      * Party. A new intent is guarded unless listed there.
      */
     function onlyFromActiveDevices(handlers: MessageHandlers): MessageHandlers {
-      const guarded: Record<string, MessageHandler<DeviceMessageType>> = {};
-      for (const [type, handler] of Object.entries(handlers) as [DeviceMessageType, MessageHandler<DeviceMessageType>][]) {
-        guarded[type] = FROM_ANY_DEVICE.has(type)
-          ? handler
-          : {
-              schema: handler.schema,
-              handle(from, message) {
-                if (party?.activeDevices[from.viewer] === from.id) handler.handle(from, message);
-              },
-            };
-      }
-      return guarded as MessageHandlers;
+      return guardHandlers(
+        handlers,
+        (type) => !FROM_ANY_DEVICE.has(type),
+        (from) => party?.activeDevices[from.viewer] === from.id,
+      );
     }
 
     /** Starts the 3-2-1 once both Viewers' players have loaded the Title. */
