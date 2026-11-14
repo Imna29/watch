@@ -195,6 +195,25 @@ describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %
     });
   });
 
+  describe("a shared state that arrives after a newer one", () => {
+    it("is ignored", () => {
+      const { h, giorgi, mariam } = watchingTogether();
+
+      mariam.setDelay(2 * SECOND);
+      giorgi.player!.controls.pause();
+      h.advance(100);
+      // Mariam's network speeds up: the state after the next change overtakes the paused one.
+      mariam.setDelay(20);
+      giorgi.player!.controls.play();
+      h.advance(10 * SECOND);
+
+      expect(giorgi.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+      expect(mariam.watchParty.party).toEqual(giorgi.watchParty.party);
+    });
+  });
+
   describe("after another device of the Viewer took over", () => {
     it("a pause pressed on the device it moved away from changes nothing", () => {
       const h = createHarness({ syncableSource: source });

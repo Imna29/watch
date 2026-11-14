@@ -143,7 +143,21 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     changed();
   }
 
+  /**
+   * The newest shared state's `seq` heard on this connection. A state that
+   * arrives after a newer one is stale and ignored. A new connection may
+   * reach a restarted server, which numbers from scratch: it starts over.
+   */
+  let newestSeq = -1;
+  client.on("welcome", () => {
+    newestSeq = -1;
+  });
+
   client.on("watchParty", (message) => {
+    if (message.party) {
+      if (message.party.seq <= newestSeq) return;
+      newestSeq = message.party.seq;
+    }
     party = message.party;
     rememberTakingPart();
     const phase = party?.phase;

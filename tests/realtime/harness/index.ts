@@ -83,7 +83,10 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
-  /** Changes this device's one-way network delay. */
+  /**
+   * Changes this device's one-way network delay. Messages already on their
+   * way keep theirs, so a shorter delay lets later messages overtake them.
+   */
   setDelay(ms: number): void;
   /** This device's network silently stops carrying anything, both ways. */
   drop(): void;
