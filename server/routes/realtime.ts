@@ -16,7 +16,10 @@ interface Connection {
   terminate(): void;
 }
 
-const coordinator = createRealtimeCoordinator({ now: Date.now });
+const coordinator = createRealtimeCoordinator({
+  now: Date.now,
+  watchParty: { history: watchPartyHistory },
+});
 const connections = new Map<string, Connection>();
 
 function carryOut(outgoing: Outgoing[]) {

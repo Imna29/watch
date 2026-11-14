@@ -10,7 +10,8 @@ import type { Device, FeatureFactory } from "../coordinator";
 import type { DeviceId } from "../protocol";
 import type { PresenceMessage, TitleRef, ViewerPresence, WatchingMessage } from "./protocol";
 
-const titleSchema = z.object({
+/** Validates a `TitleRef` from a device. */
+export const titleRefSchema = z.object({
   contentType: z.enum(WatchPlaylistItemType),
   tmdbId: z.number().int().positive(),
   name: z.string().max(500),
@@ -18,7 +19,7 @@ const titleSchema = z.object({
 
 const watchingSchema = z.object({
   type: z.literal("presence:watching"),
-  title: titleSchema.nullable(),
+  title: titleRefSchema.nullable(),
 });
 
 export interface PresenceOptions {

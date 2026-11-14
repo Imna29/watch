@@ -8,18 +8,21 @@
  */
 import type { ConnectionDeviceMessage, ConnectionServerMessage } from "./connection/protocol";
 import type { PresenceDeviceMessage, PresenceServerMessage } from "./presence/protocol";
+import type { WatchPartyDeviceMessage, WatchPartyServerMessage } from "./watchParty/protocol";
 
 export type { DeviceId } from "./connection/protocol";
 
 /** Everything a device may send the server. */
 export type DeviceMessage =
   | ConnectionDeviceMessage
-  | PresenceDeviceMessage;
+  | PresenceDeviceMessage
+  | WatchPartyDeviceMessage;
 
 /** Everything the server may send a device. */
 export type ServerMessage =
   | ConnectionServerMessage
-  | PresenceServerMessage;
+  | PresenceServerMessage
+  | WatchPartyServerMessage;
 
 export type DeviceMessageType = DeviceMessage["type"];
 export type ServerMessageType = ServerMessage["type"];

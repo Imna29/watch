@@ -5,6 +5,7 @@
  */
 import { createCoordinator, type Coordinator } from "./coordinator";
 import { presence } from "./presence/coordinator";
+import { watchParty, type WatchPartyOptions } from "./watchParty/coordinator";
 
 /** How often the transport calls `coordinator.tick()`. */
 export const TICK_INTERVAL_MS = 250;
@@ -12,13 +13,15 @@ export const TICK_INTERVAL_MS = 250;
 export interface RealtimeServerOptions {
   /** The server clock, in milliseconds since the epoch. */
   now: () => number;
+  watchParty: WatchPartyOptions;
 }
 
-export function createRealtimeCoordinator({ now }: RealtimeServerOptions): Coordinator {
+export function createRealtimeCoordinator({ now, ...options }: RealtimeServerOptions): Coordinator {
   return createCoordinator({
     now,
     features: [
       presence(),
+      watchParty(options.watchParty),
     ],
   });
 }
