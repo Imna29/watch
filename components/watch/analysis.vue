@@ -24,7 +24,10 @@ const GRADES = Array.from({ length: GRADE_MAX - GRADE_MIN + 1 }, (_, index) => G
 const toast = useToast();
 const confirm = useConfirm();
 const { data: viewer } = useViewer();
-const { data: analysis, isSuccess } = useMovieAnalysis(() => props.movieId);
+const { data: analysis, isSuccess, refetch } = useMovieAnalysis(() => props.movieId);
+// Pages stay alive (`app.vue`), so coming back to this one is no new mount:
+// read the Analysis again then too. On the first mount, this joins its fetch.
+onActivated(() => refetch({ cancelRefetch: false }));
 const { mutate: writeAnalysis, isPending: isWriting } = useWriteAnalysis();
 const { mutate: deleteAnalysis, isPending: isDeleting } = useDeleteAnalysis();
 const { mutate: gradeAnalysis, isPending: isGrading } = useGradeAnalysis();
