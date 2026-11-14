@@ -133,11 +133,25 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
     return fetch<{ analysis: Analysis | null }>(`/analyses/${movieId}`);
   },
 
-  /** Writes the movie's Analysis, or replaces its text. Only the writer may (403 otherwise). */
+  /**
+   * Writes the movie's Analysis, or replaces its text. Only the writer may
+   * (403 otherwise), and only until it is graded (409 after).
+   */
   async writeAnalysis(movieId: number, text: string) {
     return fetch<{ analysis: Analysis }>(`/analyses/${movieId}`, {
       method: "PUT",
       body: { text },
+    });
+  },
+
+  /**
+   * Sets or replaces the movie's Grade and remark (null for none). Only the
+   * grader may (403 otherwise); 404 when the movie has no Analysis.
+   */
+  async gradeAnalysis(movieId: number, grade: number, remark: string | null) {
+    return fetch<{ analysis: Analysis }>(`/analyses/${movieId}/grade`, {
+      method: "PUT",
+      body: { grade, remark },
     });
   },
 

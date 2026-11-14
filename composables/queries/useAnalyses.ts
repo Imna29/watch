@@ -34,3 +34,22 @@ export function useWriteAnalysis() {
     },
   })
 }
+
+/**
+ * Sets or replaces the Grade and remark (null for none) of a movie's
+ * Analysis. Only the grader may (`ANALYSIS_GRADER`).
+ */
+export function useGradeAnalysis() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ movieId, grade, remark }: { movieId: number; grade: number; remark: string | null }) => {
+      const { $apiClient } = useNuxtApp()
+      return watchRepository($apiClient).gradeAnalysis(movieId, grade, remark)
+    },
+    // Also after a refusal (the Analysis was deleted meanwhile), so the page catches up.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.analyses.all })
+    },
+  })
+}

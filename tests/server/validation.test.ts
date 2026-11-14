@@ -5,6 +5,7 @@ import {
   deletePlaylistItemsBodySchema,
   discoverQuerySchema,
   genreIdsSchema,
+  gradeBodySchema,
   movieIdParamsSchema,
   playlistParamsSchema,
   seasonParamsSchema,
@@ -102,6 +103,38 @@ describe("analysisBodySchema", () => {
   it("refuses an empty Analysis", () => {
     for (const body of [{ text: "" }, { text: "  \n\t " }, {}, { text: 42 }, null]) {
       expect(analysisBodySchema.safeParse(body).success).toBe(false);
+    }
+  });
+});
+
+describe("gradeBodySchema", () => {
+  it("takes a whole Grade from -1 to 10", () => {
+    for (const grade of [-1, 0, 7, 10]) {
+      expect(gradeBodySchema.parse({ grade })).toEqual({ grade, remark: null });
+    }
+    for (const grade of [-2, 11, 7.5, "7", null, undefined]) {
+      expect(gradeBodySchema.safeParse({ grade }).success).toBe(false);
+    }
+    expect(gradeBodySchema.safeParse(null).success).toBe(false);
+  });
+
+  it("trims the remark and keeps its line breaks", () => {
+    expect(gradeBodySchema.parse({ grade: 8, remark: "  Good.\n\nMissed the ending.\n " })).toEqual({
+      grade: 8,
+      remark: "Good.\n\nMissed the ending.",
+    });
+  });
+
+  it("takes a remark of up to 500 characters, counted after trimming", () => {
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: "x".repeat(500) }).success).toBe(true);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: ` ${"x".repeat(500)}\n` }).success).toBe(true);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: "x".repeat(501) }).success).toBe(false);
+    expect(gradeBodySchema.safeParse({ grade: 8, remark: 42 }).success).toBe(false);
+  });
+
+  it("treats an empty or missing remark as no remark", () => {
+    for (const body of [{ grade: 5 }, { grade: 5, remark: "" }, { grade: 5, remark: " \n\t " }, { grade: 5, remark: null }]) {
+      expect(gradeBodySchema.parse(body)).toEqual({ grade: 5, remark: null });
     }
   });
 });

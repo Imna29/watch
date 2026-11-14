@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { tmdbIdNumberSchema as tmdbId } from "~/utils/tmdbId";
-import { ANALYSIS_TEXT_MAX_LENGTH } from "~/models/apiModels/watch/Analysis";
+import {
+  ANALYSIS_TEXT_MAX_LENGTH,
+  GRADE_MAX,
+  GRADE_MIN,
+  GRADE_REMARK_MAX_LENGTH,
+} from "~/models/apiModels/watch/Analysis";
 
 // Season 0 is "Specials" on TMDB, so 0 is valid.
 const seasonNumber = z.number().int().min(0).max(10_000);
@@ -33,6 +38,18 @@ export const movieIdParamsSchema = z.object({
 // Plain text: trimmed at both ends, line breaks inside kept as typed.
 export const analysisBodySchema = z.object({
   text: z.string().trim().min(1).max(ANALYSIS_TEXT_MAX_LENGTH),
+});
+
+// A whole Grade from -1 to 10, and an optional plain-text remark. An empty
+// remark, after trimming, is no remark (null).
+export const gradeBodySchema = z.object({
+  grade: z.number().int().min(GRADE_MIN).max(GRADE_MAX),
+  remark: z
+    .string()
+    .trim()
+    .max(GRADE_REMARK_MAX_LENGTH)
+    .nullish()
+    .transform((remark) => remark || null),
 });
 
 export const addPlaylistItemBodySchema = z.object({

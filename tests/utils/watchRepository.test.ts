@@ -66,6 +66,20 @@ describe("watchRepository", () => {
     });
   });
 
+  it("puts a Grade and its remark to the movie's grade route", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.gradeAnalysis(550, -1, "Missed it.\nEntirely.");
+    await repo.gradeAnalysis(550, 10, null);
+    expect(fetch).toHaveBeenNthCalledWith(1, "/analyses/550/grade", {
+      method: "PUT",
+      body: { grade: -1, remark: "Missed it.\nEntirely." },
+    });
+    expect(fetch).toHaveBeenNthCalledWith(2, "/analyses/550/grade", {
+      method: "PUT",
+      body: { grade: 10, remark: null },
+    });
+  });
+
   it("passes the search term as an encoded query parameter", async () => {
     const { fetch, repo } = makeRepo();
     await repo.search("tom & jerry #1");

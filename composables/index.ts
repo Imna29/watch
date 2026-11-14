@@ -23,4 +23,4 @@ export {
   useAddWatchedEpisode,
 } from './queries/useWatched'
 export { viewerOptions, useViewer, useSignIn, useSignOut } from './queries/useViewer'
-export { analysisOptions, useMovieAnalysis, useWriteAnalysis } from './queries/useAnalyses'
+export { analysisOptions, useMovieAnalysis, useWriteAnalysis, useGradeAnalysis } from './queries/useAnalyses'

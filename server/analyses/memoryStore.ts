@@ -9,11 +9,19 @@ export function createMemoryAnalysisStore(): AnalysisStore {
       const analysis = byMovie.get(movieId);
       return analysis ? { ...analysis } : null;
     },
-    async write(movieId, text, at) {
+    async writeUnlessGraded(movieId, text, at) {
       const existing = byMovie.get(movieId);
+      if (existing && existing.grade !== null) return null;
       const analysis = existing
         ? { ...existing, text, editedAt: at }
-        : { movieId, text, submittedAt: at, editedAt: at };
+        : { movieId, text, submittedAt: at, editedAt: at, grade: null, remark: null, gradedAt: null };
+      byMovie.set(movieId, analysis);
+      return { ...analysis };
+    },
+    async grade(movieId, grade, remark, at) {
+      const existing = byMovie.get(movieId);
+      if (!existing) return null;
+      const analysis = { ...existing, grade, remark, gradedAt: at };
       byMovie.set(movieId, analysis);
       return { ...analysis };
     },
