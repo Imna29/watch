@@ -80,7 +80,9 @@ visible in the shell's fullscreen. ICE servers come from
 
 The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
 - `sources/`: one Syncable Source adapter per Source (`postMessage` both ways,
-  origins checked against `utils/sources.ts`), listed in `sources/index.ts`.
+  origins checked against `utils/sources.ts`), listed in `sources/index.ts`:
+  CineSrc, then VidFast. A factory states `canSetRate` (VidFast: no speed
+  command), which the coordinator reads through `canSetRate()`.
 - `partySync.ts`: on the device that takes part, joins an adapter to the
   connection (`usePartySync` in `composables/useWatchParty.ts`).
 Each Viewer takes part from one active device, the newest they joined from.
@@ -94,6 +96,12 @@ is noted as an expected echo (`createEchoes` in `partySync.ts`), so the
 player's report of it is never sent back. A new command party sync gives
 must be noted the same way. Devices drop a state whose `seq` is older than
 one they have.
+Source fallback (`sourceFallback.ts` on the server): party sync reports a
+Source that cannot play the Title (`watchParty:player`, status "failed").
+The coordinator adds it to the state's `failedSources` and offers both
+Viewers its `fallback`: the next Syncable Source, or `tab-share` once none
+is left. `watchParty:source` switches both players to a Source at the
+current position. Another episode clears `failedSources`.
 The coordinator records History through the `HistoryPort` that
 `server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
 once per Syncable Source with an adapter: a new one needs a fake player that
