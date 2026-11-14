@@ -14,17 +14,19 @@
  *
  * A test device is what `createRealtimeDevice` returns (`client`, `presence`,
  * `watchParty`, `call`, ...) plus its own clock and network controls, and
- * its fake browser media for the Call (`media`: microphone, camera, peer
- * connections). Code that awaits between timers (the Call's media and peer
- * connections) needs `await h.advanceAsync(ms)`, which lets promises settle
- * on the way.
+ * its fake browser media for the Call (`media`: microphone, camera, tab
+ * capture, peer connections). Code that awaits between timers (the Call's
+ * media and peer connections) needs `await h.advanceAsync(ms)`, which lets
+ * promises settle on the way.
  *
  * While the
  * device takes part in a Watch Party it shows the Watch Party player, as the
  * app's layout does: real party sync driving a fake Source player
  * (`device.partySync`, `device.player`). The Viewer in front of it uses the
  * Source's own controls through `device.player.controls` (play, pause,
- * seek, setSpeed, setVolume).
+ * seek, setSpeed, setVolume). In Tab Share the player shows the shared tab
+ * instead (`device.tabShare`, and the tab tracks in `device.call.state`),
+ * so there is no Source player.
  *
  * Watch Party scenarios run once per Syncable Source:
  *
@@ -200,7 +202,8 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
     if (opensInMs > 0) clock.setTimeout(() => device.client.start(), opensInMs);
     else device.client.start();
 
-    // The Watch Party player, shown for `playerParty`, one per Watch Party (layouts/watchLayout.vue).
+    // The Watch Party player, shown for `playerParty`, one per Watch Party (layouts/watchLayout.vue);
+    // in Tab Share it shows the shared tab instead of a Syncable Source (components/watch/partyPlayer.vue).
     let partyPlayer: { partyId: string; frame: FakeFrame; partySync: PartySync } | null = null;
     function closePlayer() {
       partyPlayer?.partySync.destroy();
@@ -208,7 +211,8 @@ export function createHarness({ syncableSource = "cinesrc", fallbackSources = []
       partyPlayer = null;
     }
     device.watchParty.subscribe(() => {
-      const shown = device.watchParty.playerParty;
+      const playerParty = device.watchParty.playerParty;
+      const shown = playerParty?.mode === "tab-share" ? null : playerParty;
       if (partyPlayer && partyPlayer.partyId !== shown?.id) closePlayer();
       if (shown && !partyPlayer) {
         const frame = createFakeFrame(deviceClock, playerOptions);

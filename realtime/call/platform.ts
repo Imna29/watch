@@ -59,6 +59,15 @@ export interface PeerConnectionEvents {
   connectionstatechange(): void;
 }
 
+/** A browser tab captured for Tab Share: its picture, and its sound when the browser shares it. */
+export interface TabCapture {
+  video: MediaTrack;
+  /** The tab's sound; null when the browser did not share it (it cannot, or the Viewer unticked it). */
+  audio: MediaTrack | null;
+  /** Calls `listener` once the capture ends by itself: the Viewer pressed the browser's "Stop sharing". */
+  onEnded(listener: () => void): void;
+}
+
 export interface CallPlatform {
   /**
    * Asks for the microphone. Rejects like `getUserMedia`, with an error whose
@@ -67,6 +76,14 @@ export interface CallPlatform {
   getMicrophone(): Promise<MediaTrack>;
   /** Asks for the camera; rejects like `getMicrophone`. */
   getCamera(): Promise<MediaTrack>;
+  /**
+   * Asks the Viewer for a browser tab to share, with its sound, offering
+   * this tab first (`./tabCapture.ts`). Only works from the Viewer's click.
+   * Rejects like `getDisplayMedia` (`NotAllowedError` when the Viewer
+   * cancels), and with `NotSupportedError` where the browser cannot share a
+   * tab at all.
+   */
+  captureTab(): Promise<TabCapture>;
   /** STUN and TURN servers with fresh relay credentials (`CALL_ICE_SERVERS_PATH`). */
   getIceServers(): Promise<IceServer[]>;
   createPeerConnection(config: { iceServers: IceServer[] }, events: PeerConnectionEvents): PeerConnection;

@@ -74,6 +74,17 @@ export type WatchPartyPhaseName = WatchPartyPhase["name"];
 export type WatchPartyMode = "syncable-source" | "tab-share";
 
 /**
+ * Tab Share (`./tabShare.ts`): `sharer` plays `source` (any Source) in
+ * their player and shares that browser tab over the Call; the other Viewer
+ * watches it there. `sound`: whether the browser shared the tab's sound too.
+ */
+export interface TabShare {
+  sharer: Viewer;
+  source: SourceId;
+  sound: boolean;
+}
+
+/**
  * What both Viewers are offered once the Watch Party's Source could not play
  * the Title: the next Syncable Source, or, when no Syncable Source is left,
  * Tab Share.
@@ -90,7 +101,7 @@ export interface WatchPartyState {
   title: TitleRef;
   /** The episode, for a TV show; null for a movie. */
   episode: Episode | null;
-  /** The Syncable Source both players use (in Tab Share: the one the sharer plays). */
+  /** The Syncable Source both players use (in Tab Share: the one they go back to). */
   source: SourceId;
   /**
    * The Syncable Sources that could not play the Title (this episode of it)
@@ -100,6 +111,8 @@ export interface WatchPartyState {
   /** What both Viewers are offered now that `source` failed; null while it works. */
   fallback: SourceFallback | null;
   mode: WatchPartyMode;
+  /** In Tab Share mode: who shares their tab, playing what; null otherwise. */
+  tabShare: TabShare | null;
   phase: WatchPartyPhase;
   anchor: PlaybackAnchor;
   /** The Viewer who made the last change. */
@@ -174,12 +187,14 @@ export type PlaybackChange =
 /**
  * A change `by` made, in the shared state numbered `seq`. "next-cancelled":
  * they cancelled "Next episode in 10s", so both stay at the end of the episode.
+ * "tab-share-stopped": they stopped a Tab Share (theirs or the other Viewer's).
  */
 export type WatchPartyChange = (
   | PlaybackChange
   | { kind: "episode"; episode: Episode }
   | { kind: "source"; source: SourceId }
   | { kind: "next-cancelled" }
+  | { kind: "tab-share-stopped" }
 ) & { by: Viewer; seq: number };
 
 /**
@@ -266,6 +281,24 @@ export interface LeaveWatchPartyMessage {
   partyId: string;
 }
 
+/**
+ * Tab Share: this device shares its tab over the Call, playing `source` (any
+ * Source), with the tab's sound or without it (`sound`). From the device
+ * that already shares: it now plays `source`.
+ */
+export interface TabShareMessage {
+  type: "watchParty:tabShare";
+  partyId: string;
+  source: SourceId;
+  sound: boolean;
+}
+
+/** Either Viewer stops the Tab Share: both go back to the Syncable Source. */
+export interface StopTabShareMessage {
+  type: "watchParty:stopTabShare";
+  partyId: string;
+}
+
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
 export interface WatchPartyMessage {
   type: "watchParty";
@@ -300,6 +333,8 @@ export type WatchPartyDeviceMessage =
   | PositionMessage
   | TitleEndedMessage
   | CancelNextEpisodeMessage
-  | LeaveWatchPartyMessage;
+  | LeaveWatchPartyMessage
+  | TabShareMessage
+  | StopTabShareMessage;
 
 export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage | CatchUpMessage;
