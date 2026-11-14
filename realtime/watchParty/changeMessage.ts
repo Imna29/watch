@@ -4,6 +4,7 @@
  * tests read it.
  */
 import { VIEWER_NAMES } from "../../models/Viewer";
+import { getSource } from "../../utils/sources";
 import type { WatchPartyChange } from "./protocol";
 
 export function describeChange(change: WatchPartyChange): string {
@@ -19,6 +20,8 @@ export function describeChange(change: WatchPartyChange): string {
       return `${who} changed the speed to ${change.rate}×`;
     case "episode":
       return `${who} switched to S${change.episode.season}E${change.episode.episode}`;
+    case "source":
+      return `${who} switched to ${getSource(change.source).name}`;
   }
 }
 

@@ -126,13 +126,15 @@ export function sourceCanSetRate(source: AdaptedSourceId): boolean {
 export interface HarnessOptions {
   /** The Syncable Source Watch Parties use. */
   syncableSource?: AdaptedSourceId;
+  /** The Syncable Sources a Watch Party may go on to after it, best first. Default: none. */
+  fallbackSources?: readonly AdaptedSourceId[];
 }
 
-export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {}) {
+export function createHarness({ syncableSource = "cinesrc", fallbackSources = [] }: HarnessOptions = {}) {
   const clock = createFakeClock();
   const history = createFakeHistory();
   const server = createFakeServer(clock, {
-    watchParty: { sources: [syncableSource], history },
+    watchParty: { sources: [syncableSource, ...fallbackSources], history },
   });
   const mediaWorld = createFakeMediaWorld();
   const counts: Partial<Record<Viewer, number>> = {};
