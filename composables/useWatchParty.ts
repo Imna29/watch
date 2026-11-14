@@ -12,6 +12,8 @@ export interface WatchPartySnapshot {
   viewer: Viewer | null;
   party: WatchPartyState | null;
   activeHere: boolean;
+  elsewhere: WatchPartyState | null;
+  continuedElsewhere: boolean;
   invite: WatchPartyState | null;
   choice: StartChoice | null;
   ended: EndedNotice | null;
@@ -29,6 +31,8 @@ export function useWatchParty() {
     viewer: client.identity?.viewer ?? null,
     party: watchParty.party,
     activeHere: watchParty.activeHere,
+    elsewhere: watchParty.elsewhere,
+    continuedElsewhere: watchParty.continuedElsewhere,
     invite: watchParty.invite,
     choice: watchParty.choice,
     ended: watchParty.ended,

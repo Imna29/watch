@@ -83,6 +83,10 @@ The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:
   origins checked against `utils/sources.ts`), listed in `sources/index.ts`.
 - `partySync.ts`: on the device that takes part, joins an adapter to the
   connection (`usePartySync` in `composables/useWatchParty.ts`).
+Each Viewer takes part from one active device, the newest they joined from.
+The coordinator handles an intent only from that device, unless
+`FROM_ANY_DEVICE` (`coordinator.ts`) lists it: list there an intent any
+device of a Viewer may send.
 The coordinator records History through the `HistoryPort` that
 `server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
 once per Syncable Source with an adapter: a new one needs a fake player that
