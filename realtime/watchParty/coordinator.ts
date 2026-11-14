@@ -27,7 +27,8 @@ import { afterEpisodeChange, afterPlaybackChange, playbackSchema, sameEpisode } 
 import {
   afterSourceFailed,
   afterSourceSwitch,
-  NO_FAILED_SOURCES,
+  noFailedSources,
+  sourceHasFailed,
   sourceIdSchema,
   switchSourceSchema,
 } from "./sourceFallback";
@@ -238,7 +239,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               title,
               episode,
               source: sources[0]!,
-              ...NO_FAILED_SOURCES,
+              ...noFailedSources(),
               mode: "syncable-source",
               phase: { name: "inviting" },
               anchor: { position: 0, serverTime: now, playing: false, rate: 1 },
@@ -281,6 +282,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               if (failed) publish({ ...party, ...failed });
               return;
             }
+            if (sourceHasFailed(party)) return;
             readyDevices.add(from.id);
             startCountdownWhenReady();
           },

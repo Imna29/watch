@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import type { Episode, PlaybackChange, PlaybackMessage, WatchPartyState } from "./protocol";
-import { NO_FAILED_SOURCES } from "./sourceFallback";
+import { noFailedSources } from "./sourceFallback";
 
 /** No Title runs longer than a day: a position beyond it is refused. */
 const MAX_POSITION_S = 24 * 3600;
@@ -43,7 +43,7 @@ export function afterEpisodeChange(
     episode,
     phase: { name: "countdown", endsAt: null },
     anchor: { ...party.anchor, position: 0, serverTime: now, playing: false },
-    ...NO_FAILED_SOURCES,
+    ...noFailedSources(),
   };
 }
 

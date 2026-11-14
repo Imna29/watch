@@ -5,7 +5,7 @@
  * seam 1 harness drives it with a fake Source player.
  *
  * It loads the Watch Party's Title (or episode) in its Source, tells the
- * coordinator when the player is ready, keeps the player where the shared
+ * coordinator when the player is ready (or the Source failed), keeps the player where the shared
  * state's anchor says it should be, sends the Viewer's own play, pause, seek
  * and speed changes on as intents (never the echoes of its own commands),
  * and exposes what the player shell shows over the player (`PartySyncView`).

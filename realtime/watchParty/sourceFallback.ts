@@ -24,10 +24,18 @@ export const switchSourceSchema = z.object({
 }) satisfies z.ZodType<SwitchSourceMessage>;
 
 /** A new Watch Party (or a new episode of it): no Source has failed it yet. */
-export const NO_FAILED_SOURCES: Pick<WatchPartyState, "failedSources" | "fallback"> = {
-  failedSources: [],
-  fallback: null,
-};
+export function noFailedSources(): Pick<WatchPartyState, "failedSources" | "fallback"> {
+  return { failedSources: [], fallback: null };
+}
+
+/**
+ * Whether the Watch Party's Source failed. It stays failed (even if a
+ * player loads it after all) until a Viewer switches Source or episode, so
+ * the Watch Party never starts behind the fallback offer.
+ */
+export function sourceHasFailed(party: WatchPartyState): boolean {
+  return party.failedSources.includes(party.source);
+}
 
 /**
  * The Watch Party after its Source could not play the Title on a Viewer's
@@ -38,7 +46,7 @@ export function afterSourceFailed(
   party: WatchPartyState,
   sources: readonly SourceId[],
 ): Pick<WatchPartyState, "failedSources" | "fallback"> | null {
-  if (party.failedSources.includes(party.source)) return null;
+  if (sourceHasFailed(party)) return null;
   const failedSources = [...party.failedSources, party.source];
   return { failedSources, fallback: fallbackAfter(failedSources, sources) };
 }

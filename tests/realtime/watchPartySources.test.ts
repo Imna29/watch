@@ -45,6 +45,17 @@ describe.each(syncableSourcesUnderTest())("Syncable Sources in a Watch Party on 
       expect(giorgi.player?.paused).toBe(true);
     });
 
+    it("keeps offering the next Syncable Source when the failed one loads after all", () => {
+      const { h, giorgi, mariam } = together({ mariam: { loadMs: 25 * SECOND } });
+      h.advance(40 * SECOND);
+
+      expect(mariam.player?.ready).toBe(true);
+      for (const device of [giorgi, mariam]) {
+        expect(device.watchParty.party).toMatchObject({ source, fallback: { kind: "source", source: next } });
+        expect(device.player?.paused).toBe(true);
+      }
+    });
+
     it("moves both players to the next Syncable Source when a Viewer takes it, and starts them together", () => {
       const { h, giorgi, mariam } = together({ mariam: { unavailable: [source] } });
       h.advance(25 * SECOND);
