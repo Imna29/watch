@@ -20,8 +20,9 @@ const watchParty = useWatchParty();
                 <slot />
             </div>
         </div>
-        <WatchPartyPlayer v-if="watchParty.state.value.activeHere"
-            :key="watchParty.state.value.party?.id"></WatchPartyPlayer>
+        <!-- One player per Watch Party: while this device takes part, and after the other Viewer left it. -->
+        <WatchPartyPlayer v-if="watchParty.state.value.playerParty"
+            :key="watchParty.state.value.playerParty.id"></WatchPartyPlayer>
         <WatchPartyBanner></WatchPartyBanner>
         <!-- The Call lives here, not in a page, so browsing and the player never drop it. -->
         <WatchCall></WatchCall>

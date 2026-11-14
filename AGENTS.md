@@ -103,6 +103,19 @@ The coordinator adds it to the state's `failedSources` and offers both
 Viewers its `fallback`: the next Syncable Source, or `tab-share` once none
 is left. `watchParty:source` switches both players to a Source at the
 current position. Another episode clears `failedSources`.
+The end of a Title (`ending.ts` on the server): a player reports "pause"
+then "ended" at the end, as a `<video>` does; party sync drops that pause
+(adapters pass `duration` on with "timeupdate") and sends
+`watchParty:ended` with the episode after it. The device looks that up
+through the `EpisodeGuide` port (`episodeGuide.ts`: the TV show query in
+`usePartySync`, `shows` in the harness); the coordinator never fetches
+TMDB. It then runs the `next-episode` phase ("Next episode in 10s", cancel
+with `watchParty:cancelNext`) and moves both through the same path as a
+chosen episode; after a movie or the last aired episode it ends the Watch
+Party ("finished"). Closing the player sends `watchParty:leave`: the Watch
+Party ends ("left") and the other device keeps its player open
+(`playerParty`, `left` in `device.ts`) to "Keep watching alone / Stop".
+Party sync stays bound to the Watch Party it opened for.
 The coordinator records History through the `HistoryPort` that
 `server/routes/realtime.ts` passes in. Seam 1 runs every Watch Party scenario
 once per Syncable Source with an adapter: a new one needs a fake player that

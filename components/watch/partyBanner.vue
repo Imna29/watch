@@ -33,9 +33,16 @@ function nameOf(viewer: Viewer) {
 }
 
 function endedMessage({ reason, by }: EndedNotice) {
-    return reason === "replaced"
-        ? `${VIEWER_NAMES[by]} started another Watch Party instead of`
-        : `${VIEWER_NAMES[by]} ended the Watch Party of`;
+    switch (reason) {
+        case "replaced":
+            return `${VIEWER_NAMES[by]} started another Watch Party instead of`;
+        case "finished":
+            return "You finished watching";
+        case "left":
+            return `${VIEWER_NAMES[by]} left the Watch Party of`;
+        case "cancelled":
+            return `${VIEWER_NAMES[by]} ended the Watch Party of`;
+    }
 }
 
 let endedTimer: ReturnType<typeof setTimeout> | undefined;
