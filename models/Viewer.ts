@@ -16,3 +16,8 @@ export function isViewer(value: unknown): value is Viewer {
 export function otherViewer(viewer: Viewer): Viewer {
   return viewer === "giorgi" ? "mariam" : "giorgi";
 }
+
+/** The other Viewer's name, for `viewer`; "the other Viewer" while it is not known who is signed in. */
+export function otherViewerName(viewer: Viewer | null): string {
+  return viewer ? VIEWER_NAMES[otherViewer(viewer)] : "the other Viewer";
+}

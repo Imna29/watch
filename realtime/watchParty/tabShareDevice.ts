@@ -20,7 +20,7 @@ import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import { createListeners } from "../listeners";
 import type { DeviceWatchParty } from "./device";
-import type { WatchPartyState } from "./protocol";
+import { sharesTab, type WatchPartyState } from "./protocol";
 import { canShareTab } from "./tabShare";
 
 export interface TabShareState {
@@ -85,7 +85,7 @@ export function createDeviceTabShare({ client, watchParty, call, clock }: Device
   /** Whether the shared state says this device shares its tab. */
   function sharingHere() {
     const party = partyHere();
-    return party?.mode === "tab-share" && party.tabShare?.sharer === me();
+    return party?.mode === "tab-share" && sharesTab(party, me());
   }
 
   function doneStarting() {

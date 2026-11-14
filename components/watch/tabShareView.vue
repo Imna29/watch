@@ -7,8 +7,8 @@
  * sharer's device the player shell plays the Source itself: a note says it
  * is shared, and explains when its sound is not.
  */
-import { otherViewer, VIEWER_NAMES } from "~/models/Viewer";
-import type { WatchPartyState } from "~/realtime/watchParty/protocol";
+import { otherViewerName, VIEWER_NAMES } from "~/models/Viewer";
+import { sharesTab, type WatchPartyState } from "~/realtime/watchParty/protocol";
 
 const props = defineProps<{ party: WatchPartyState }>();
 
@@ -16,10 +16,9 @@ const watchParty = useWatchParty();
 const { state: call, join } = useCall();
 
 const share = computed(() => props.party.tabShare);
-const me = computed(() => watchParty.state.value.viewer);
-const sharingHere = computed(() => !!share.value && share.value.sharer === me.value);
+const sharingHere = computed(() => sharesTab(props.party, watchParty.state.value.viewer));
 const sharerName = computed(() => (share.value ? VIEWER_NAMES[share.value.sharer] : ""));
-const otherName = computed(() => (me.value ? VIEWER_NAMES[otherViewer(me.value)] : ""));
+const otherName = computed(() => otherViewerName(watchParty.state.value.viewer));
 /** The Watch Party is on (not ended because a Viewer left). */
 const live = computed(() => props.party.phase.name !== "ended");
 
@@ -29,16 +28,7 @@ const inCall = computed(() => call.value.status === "in");
 /** The browser refused to start the shared tab's sound by itself: the Viewer starts it. */
 const needsClick = ref(false);
 
-watchEffect(() => {
-    const element = screen.value;
-    if (!element) return;
-    const { tabVideo, tabAudio } = call.value.remote;
-    const wanted = [tabVideo, tabAudio].filter((track) => !!track) as MediaStreamTrack[];
-    const current = (element.srcObject as MediaStream | null)?.getTracks() ?? [];
-    if (wanted.length === current.length && wanted.every((track) => current.includes(track))) return;
-    element.srcObject = wanted.length > 0 ? new MediaStream(wanted) : null;
-    if (wanted.length > 0) play();
-});
+useMediaTracks(screen, () => [call.value.remote.tabVideo, call.value.remote.tabAudio], play);
 
 function play() {
     screen.value?.play().then(

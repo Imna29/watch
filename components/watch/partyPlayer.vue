@@ -7,11 +7,11 @@
  * on unsynced, for this Viewer alone. In Tab Share it plays the Source the
  * sharer shares, or shows the shared tab (`<WatchTabShareView>`).
  */
-import { otherViewer, VIEWER_NAMES } from "~/models/Viewer";
+import { otherViewerName, VIEWER_NAMES } from "~/models/Viewer";
 import type { MediaProblem } from "~/realtime/call/device";
 import { describeChange } from "~/realtime/watchParty/changeMessage";
 import { playableOf } from "~/realtime/watchParty/partySync";
-import type { Episode } from "~/realtime/watchParty/protocol";
+import { sharesTab, type Episode } from "~/realtime/watchParty/protocol";
 import { WATCH_PARTY_SOURCES } from "~/realtime/watchParty/sources";
 import { getSource, SOURCES, type SourceId } from "~/utils/sources";
 
@@ -38,11 +38,8 @@ onBeforeUnmount(() => (minimized.value = false));
 // watches it (`<WatchTabShareView>`). No Syncable Source plays meanwhile, so party sync does not run.
 const tabShare = useTabShare();
 const inTabShare = computed(() => party.value.mode === "tab-share");
-const sharingHere = computed(() => party.value.tabShare?.sharer === watchParty.state.value.viewer);
-const otherName = computed(() => {
-    const viewer = watchParty.state.value.viewer;
-    return viewer ? VIEWER_NAMES[otherViewer(viewer)] : "the other Viewer";
-});
+const sharingHere = computed(() => sharesTab(party.value, watchParty.state.value.viewer));
+const otherName = computed(() => otherViewerName(watchParty.state.value.viewer));
 const tabShareSources = [...SOURCES];
 const tabShareSourceId = useId();
 

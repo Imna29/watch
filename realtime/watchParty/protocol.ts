@@ -87,6 +87,11 @@ export interface TabShare {
   sound: boolean;
 }
 
+/** Whether `viewer` is the one sharing their tab in `party`'s Tab Share (or the one it ended in). */
+export function sharesTab(party: Pick<WatchPartyState, "tabShare">, viewer: Viewer | null): boolean {
+  return viewer !== null && party.tabShare?.sharer === viewer;
+}
+
 /**
  * What both Viewers are offered once the Watch Party's Source could not play
  * the Title: the next Syncable Source, or, when no Syncable Source is left,

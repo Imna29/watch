@@ -18,13 +18,7 @@ const props = defineProps<{
 const videoElement = useTemplateRef<HTMLVideoElement>("videoElement");
 const showVideo = computed(() => props.camera && !!props.video);
 
-watchEffect(() => {
-    const element = videoElement.value;
-    if (!element) return;
-    const track = showVideo.value ? (props.video as MediaStreamTrack) : null;
-    const current = (element.srcObject as MediaStream | null)?.getTracks()[0] ?? null;
-    if (current !== track) element.srcObject = track ? new MediaStream([track]) : null;
-});
+useMediaTracks(videoElement, () => [showVideo.value ? props.video : null]);
 
 // Moving the tiles into or out of the player shell can pause the video: play on.
 function keepPlaying() {

@@ -74,14 +74,8 @@ const problems = computed(() => {
 // The other Viewer's voice. Played here, outside the dock, so moving the
 // dock in and out of the player never interrupts it.
 const voice = useTemplateRef<HTMLAudioElement>("voice");
-watchEffect(() => {
-    const element = voice.value;
-    if (!element) return;
-    const track = (state.value.remote.mic as MediaStreamTrack | null) ?? null;
-    const current = (element.srcObject as MediaStream | null)?.getTracks()[0] ?? null;
-    if (current === track) return;
-    element.srcObject = track ? new MediaStream([track]) : null;
-    if (track) element.play().catch(() => {});
+useMediaTracks(voice, () => [state.value.remote.mic], (element) => {
+    element.play().catch(() => {});
 });
 </script>
 
