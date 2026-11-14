@@ -20,7 +20,7 @@ per-Viewer playlists and watched-episode tracking.
 | Install | `bun install` |
 | Dev server | `bun run dev` |
 | Unit tests | `bun run test` |
-| Typecheck | `bun run typecheck` |
+| Typecheck | `bun run typecheck` (server: `bun run typecheck:server`) |
 | Production build | `bun run build` |
 | Run the production build | `bun run start` |
 | Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
@@ -29,6 +29,10 @@ per-Viewer playlists and watched-episode tracking.
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
 `bun run typecheck 2>&1 | grep -c "error TS"` must be ≤ that number after your change.
+
+`bun run typecheck` does not cover `server/` (Nitro's own tsconfig). Check it,
+and the `realtime/` modules it imports, with `bun run typecheck:server`, which
+must report no errors.
 
 `typescript` is pinned to 6.x on purpose: `vue-tsc` (used by `nuxt typecheck`)
 cannot run on TypeScript 7 yet. Do not bump it to 7 until `vue-tsc` supports it.

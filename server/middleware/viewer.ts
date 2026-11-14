@@ -14,7 +14,7 @@ export default defineEventHandler((event) => {
 // Lower-cased, percent-decoded and without a trailing slash, so no spelling
 // of an API path slips past the guard.
 function normalizedPath(path: string) {
-  const pathname = path.split("?")[0];
+  const [pathname = ""] = path.split("?");
   let decoded = pathname;
   try {
     decoded = decodeURIComponent(pathname);
