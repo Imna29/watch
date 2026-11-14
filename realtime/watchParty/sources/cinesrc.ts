@@ -53,11 +53,21 @@ export const createCineSrcAdapter: AdapterFactory = (options) => {
         return { type: "pause" };
       case "cinesrc:ended":
         return { type: "ended" };
+      // `autonext=false` stops only the automatic next episode: its episode list and next button still move it.
+      case "cinesrc:nextepisode": {
+        const { season, episode } = message;
+        return Number.isInteger(season) && Number.isInteger(episode)
+          ? { type: "episode", season: season as number, episode: episode as number }
+          : null;
+      }
       case "cinesrc:seeked":
       case "cinesrc:timeupdate": {
         const position = seconds(message.currentTime);
         if (position === null) return null;
-        return { type: message.type === "cinesrc:seeked" ? "seeked" : "timeupdate", position };
+        if (message.type === "cinesrc:seeked") return { type: "seeked", position };
+        // `duration` is NaN until the player has the stream's metadata.
+        const duration = seconds(message.duration);
+        return duration === null ? { type: "timeupdate", position } : { type: "timeupdate", position, duration };
       }
       case "cinesrc:ratechange": {
         const rate = seconds(message.playbackRate);

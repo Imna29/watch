@@ -13,9 +13,11 @@ import type { DeviceId, DeviceMessageType } from "../protocol";
 import { titleRefSchema } from "../presence/coordinator";
 import type { TitleRef } from "../presence/protocol";
 import type {
+  CancelNextEpisodeMessage,
   CancelWatchPartyMessage,
   Episode,
   JoinWatchPartyMessage,
+  LeaveWatchPartyMessage,
   PlayerStatusMessage,
   StartWatchPartyMessage,
   TakeOverWatchPartyMessage,
@@ -23,7 +25,8 @@ import type {
   WatchPartyState,
 } from "./protocol";
 import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
-import { afterEpisodeChange, afterPlaybackChange, playbackSchema, sameEpisode } from "./sharedControls";
+import { afterEpisodeEnded, titleEndedSchema } from "./ending";
+import { afterEpisodeChange, afterPlaybackChange, episodeSchema, playbackSchema, sameEpisode } from "./sharedControls";
 import { WATCH_PARTY_SOURCES } from "./sources";
 
 /** The 3-2-1 before both players start. */
@@ -54,12 +57,6 @@ export interface WatchPartyOptions {
 
 /** Ids go into Postgres `integer` columns (History, episode progress). */
 const PG_INT_MAX = 2_147_483_647;
-
-const episodeSchema = z.object({
-  // Season 0 is "Specials" on TMDB.
-  season: z.number().int().min(0).max(10_000),
-  episode: z.number().int().min(0).max(100_000),
-});
 
 const startSchema = z
   .object({
@@ -194,6 +191,22 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       });
     }
 
+    /**
+     * Both Viewers move to another episode: the one `by` chose, or (with
+     * `by` null) the next one once its countdown is over. Both players load
+     * it anew and report when they have; the 3-2-1 then starts it.
+     */
+    function moveToEpisode(current: WatchPartyState, episode: Episode, by: Viewer | null) {
+      readyDevices = new Set();
+      publish({
+        ...current,
+        ...afterEpisodeChange(current, episode, context.now()),
+        // The seq `publish` gives this state.
+        ...(by && { lastChangeBy: by, lastChange: { kind: "episode", episode, by, seq: seq + 1 } }),
+      });
+      recordForBoth({ ...current, episode });
+    }
+
     return {
       connected(device) {
         context.send(device.id, { type: "watchParty", party });
@@ -202,6 +215,9 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       tick() {
         if (party?.phase.name === "countdown" && party.phase.endsAt !== null && context.now() >= party.phase.endsAt) {
           publish({ ...party, phase: { name: "playing" } });
+        }
+        if (party?.phase.name === "next-episode" && context.now() >= party.phase.at) {
+          moveToEpisode(party, party.phase.next, null);
         }
       },
 
@@ -298,17 +314,41 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           schema: changeEpisodeSchema satisfies z.ZodType<ChangeEpisodeMessage>,
           handle(from, { partyId, episode }) {
             if (party?.id !== partyId || party.phase.name === "inviting" || party.episode === null) return;
-            if (sameEpisode(episode, party.episode)) return;
-            // Both players load the episode anew, and report when they have.
-            readyDevices = new Set();
+            if (!sameEpisode(episode, party.episode)) moveToEpisode(party, episode, from.viewer);
+          },
+        },
+
+        // The player reached the end: "Next episode in 10s" for both (`./ending.ts`), or, after a
+        // movie or the show's final episode, the Watch Party is over.
+        "watchParty:ended": {
+          schema: titleEndedSchema,
+          handle(from, { partyId, episode, position, next }) {
+            if (party?.id !== partyId || !takesPlaybackChanges(party.phase) || !sameEpisode(episode, party.episode)) return;
+            if (party.episode && next) publish({ ...party, ...afterEpisodeEnded(party, position, next, context.now()) });
+            else end("finished", from.viewer);
+          },
+        },
+
+        // "Cancel" on "Next episode in 10s": both stay at the end of the episode, paused.
+        "watchParty:cancelNext": {
+          schema: partyIntentSchema("watchParty:cancelNext") satisfies z.ZodType<CancelNextEpisodeMessage>,
+          handle(from, { partyId }) {
+            if (party?.id !== partyId || party.phase.name !== "next-episode") return;
             publish({
               ...party,
-              ...afterEpisodeChange(party, episode, context.now()),
+              phase: { name: "paused" },
               lastChangeBy: from.viewer,
               // The seq `publish` gives this state.
-              lastChange: { kind: "episode", episode, by: from.viewer, seq: seq + 1 },
+              lastChange: { kind: "next-cancelled", by: from.viewer, seq: seq + 1 },
             });
-            recordForBoth(party);
+          },
+        },
+
+        // The Viewer closed the player: the other keeps watching alone or stops (while it waits: cancelled).
+        "watchParty:leave": {
+          schema: partyIntentSchema("watchParty:leave") satisfies z.ZodType<LeaveWatchPartyMessage>,
+          handle(from, { partyId }) {
+            if (party?.id === partyId) end(party.phase.name === "inviting" ? "cancelled" : "left", from.viewer);
           },
         },
       }),

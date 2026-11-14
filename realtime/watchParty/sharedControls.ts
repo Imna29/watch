@@ -10,7 +10,13 @@ import type { Episode, PlaybackChange, PlaybackMessage, WatchPartyState } from "
 /** No Title runs longer than a day: a position beyond it is refused. */
 const MAX_POSITION_S = 24 * 3600;
 
-const positionSchema = z.number().finite().min(0).max(MAX_POSITION_S);
+export const positionSchema = z.number().finite().min(0).max(MAX_POSITION_S);
+
+export const episodeSchema = z.object({
+  // Season 0 is "Specials" on TMDB.
+  season: z.number().int().min(0).max(10_000),
+  episode: z.number().int().min(0).max(100_000),
+});
 
 export const playbackSchema = z.object({
   type: z.literal("watchParty:playback"),

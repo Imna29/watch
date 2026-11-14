@@ -19,6 +19,8 @@ export function describeChange(change: WatchPartyChange): string {
       return `${who} changed the speed to ${change.rate}×`;
     case "episode":
       return `${who} switched to S${change.episode.season}E${change.episode.episode}`;
+    case "next-cancelled":
+      return `${who} cancelled the next episode`;
   }
 }
 

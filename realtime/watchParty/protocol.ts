@@ -32,7 +32,11 @@ export type WatchPartyEndReason =
   /** A Viewer pressed Cancel (or closed the player) and ended it for both. */
   | "cancelled"
   /** A Viewer started another Watch Party in its place. */
-  | "replaced";
+  | "replaced"
+  /** The movie, or the TV show's final episode, ended. */
+  | "finished"
+  /** A Viewer closed the player: the other Viewer keeps watching alone, or stops. */
+  | "left";
 
 /**
  * What the Watch Party is doing. In order:
@@ -138,8 +142,14 @@ export type PlaybackChange =
   | { kind: "play" | "pause" | "seek"; position: number }
   | { kind: "rate"; position: number; rate: number };
 
-/** A change `by` made, in the shared state numbered `seq`. */
-export type WatchPartyChange = (PlaybackChange | { kind: "episode"; episode: Episode }) & { by: Viewer; seq: number };
+/**
+ * A change `by` made, in the shared state numbered `seq`. "next-cancelled":
+ * they cancelled "Next episode in 10s", so both stay at the end of the episode.
+ */
+export type WatchPartyChange = (PlaybackChange | { kind: "episode"; episode: Episode } | { kind: "next-cancelled" }) & {
+  by: Viewer;
+  seq: number;
+};
 
 /**
  * Whether Viewers control playback in this phase: both are in and the Title
@@ -163,6 +173,38 @@ export interface ChangeEpisodeMessage {
   episode: Episode;
 }
 
+/**
+ * This device's player reached the end of the Title (for a TV show: of
+ * `episode`), at `position` seconds.
+ */
+export interface TitleEndedMessage {
+  type: "watchParty:ended";
+  partyId: string;
+  episode: Episode | null;
+  position: number;
+  /**
+   * The episode after it, as the device's episode guide has it
+   * (`./episodeGuide.ts`); null after a TV show's final episode, and for a movie.
+   */
+  next: Episode | null;
+}
+
+/** "Cancel" on "Next episode in 10s": both Viewers stay at the end of the episode. */
+export interface CancelNextEpisodeMessage {
+  type: "watchParty:cancelNext";
+  partyId: string;
+}
+
+/**
+ * The Viewer closed the Watch Party player: the Watch Party ends, and the
+ * other Viewer chooses to keep watching alone or to stop. While it still
+ * waits for the other Viewer, it is cancelled instead.
+ */
+export interface LeaveWatchPartyMessage {
+  type: "watchParty:leave";
+  partyId: string;
+}
+
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
 export interface WatchPartyMessage {
   type: "watchParty";
@@ -182,6 +224,9 @@ export type WatchPartyDeviceMessage =
   | CancelWatchPartyMessage
   | PlayerStatusMessage
   | PlaybackMessage
-  | ChangeEpisodeMessage;
+  | ChangeEpisodeMessage
+  | TitleEndedMessage
+  | CancelNextEpisodeMessage
+  | LeaveWatchPartyMessage;
 
 export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;

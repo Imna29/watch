@@ -42,6 +42,7 @@
 import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
+import type { EpisodeGuide, ShowEpisodes } from "../../../realtime/watchParty/episodeGuide";
 import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
 import {
   SYNCABLE_SOURCE_ADAPTERS,
@@ -126,10 +127,19 @@ export function sourceCanSetRate(source: AdaptedSourceId): boolean {
 export interface HarnessOptions {
   /** The Syncable Source Watch Parties use. */
   syncableSource?: AdaptedSourceId;
+  /** TMDB's episode lists, by TV show id: what devices find when an episode ends. */
+  shows?: Record<number, ShowEpisodes>;
 }
 
-export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {}) {
+export function createHarness({ syncableSource = "cinesrc", shows = {} }: HarnessOptions = {}) {
   const clock = createFakeClock();
+  const episodes: EpisodeGuide = {
+    async episodesOf(tmdbId) {
+      const show = shows[tmdbId];
+      if (!show) throw new Error(`This test has no episodes of TV show ${tmdbId}.`);
+      return structuredClone(show);
+    },
+  };
   const history = createFakeHistory();
   const server = createFakeServer(clock, {
     watchParty: { sources: [syncableSource], history },
@@ -170,22 +180,25 @@ export function createHarness({ syncableSource = "cinesrc" }: HarnessOptions = {
       });
       device.client.start();
 
-      // The Watch Party player, shown while this device takes part (layouts/watchLayout.vue).
-      let partyPlayer: { frame: FakeFrame; partySync: PartySync } | null = null;
+      // The Watch Party player, shown for `playerParty`, one per Watch Party (layouts/watchLayout.vue).
+      let partyPlayer: { partyId: string; frame: FakeFrame; partySync: PartySync } | null = null;
       device.watchParty.subscribe(() => {
-        if (device.watchParty.activeHere && !partyPlayer) {
+        const shown = device.watchParty.playerParty;
+        if (partyPlayer && partyPlayer.partyId !== shown?.id) {
+          partyPlayer.partySync.destroy();
+          partyPlayer.frame.remove();
+          partyPlayer = null;
+        }
+        if (shown && !partyPlayer) {
           const frame = createFakeFrame(deviceClock, options.player);
           const partySync = createPartySync({
             watchParty: device.watchParty,
             client: device.client,
             clock: deviceClock,
             frame,
+            episodes,
           });
-          partyPlayer = { frame, partySync };
-        } else if (!device.watchParty.activeHere && partyPlayer) {
-          partyPlayer.partySync.destroy();
-          partyPlayer.frame.remove();
-          partyPlayer = null;
+          partyPlayer = { partyId: shown.id, frame, partySync };
         }
       });
 

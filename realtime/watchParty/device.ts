@@ -10,11 +10,21 @@ import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
 import type { Episode, PlaybackChange, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
-/** How a Watch Party this device knew about ended, told to the Viewer who did not end it. */
+/**
+ * How a Watch Party this device knew about ended, told to the Viewer who
+ * did not end it (when the Title "finished", to both).
+ */
 export interface EndedNotice {
   title: TitleRef;
   episode: Episode | null;
   reason: WatchPartyEndReason;
+  by: Viewer;
+}
+
+/** "Giorgi left": the other Viewer left the Watch Party of `title` (at `episode`). */
+export interface LeftNotice {
+  title: TitleRef;
+  episode: Episode | null;
   by: Viewer;
 }
 
@@ -29,11 +39,19 @@ export interface StartChoice {
 export interface DeviceWatchParty {
   /** The Watch Party as last heard from the server; null when there is none. */
   readonly party: WatchPartyState | null;
-  /**
-   * Whether this device takes part in the Watch Party, so it shows the
-   * Watch Party's player.
-   */
+  /** Whether this device takes part in the Watch Party. */
   readonly activeHere: boolean;
+  /**
+   * The Watch Party whose player this device shows: the one it takes part
+   * in, or the one the other Viewer left, which this Viewer keeps watching
+   * alone until they stop. Null when it shows none.
+   */
+  readonly playerParty: WatchPartyState | null;
+  /**
+   * "Giorgi left · Keep watching alone / Stop": the other Viewer left the
+   * Watch Party this device took part in. Until this Viewer chooses.
+   */
+  readonly left: LeftNotice | null;
   /**
    * The Watch Party this Viewer takes part in from another device; null
    * otherwise. `join()` takes it over here.
@@ -73,11 +91,29 @@ export interface DeviceWatchParty {
   /** Party sync: the Viewer changed playback in this device's player. */
   playback(partyId: string, change: PlaybackChange): void;
   /**
+   * Party sync: this device's player reached the end of the Title (of
+   * `episode`, for a TV show) at `position`, and `next` comes after it
+   * (null: nothing does).
+   */
+  titleEnded(partyId: string, episode: Episode | null, position: number, next: Episode | null): void;
+  /**
    * Moves both Viewers to another `episode` of the Watch Party's TV show.
    * While the Watch Party still waits for the other Viewer, it starts anew
    * on that episode (a new invite) instead.
    */
   changeEpisode(episode: Episode): void;
+  /** "Cancel" on "Next episode in 10s": both Viewers stay at the end of the episode. */
+  cancelNextEpisode(): void;
+  /**
+   * The Viewer closed the Watch Party player: leaves the Watch Party, and
+   * the other Viewer is asked whether to keep watching alone. While it still
+   * waits for the other Viewer, this cancels it.
+   */
+  leave(): void;
+  /** "Keep watching alone": the player stays open and plays on, for this Viewer only. */
+  keepWatchingAlone(): void;
+  /** "Stop" (or closing the player after the other Viewer left): closes the player. */
+  stop(): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -92,6 +128,9 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
   let inTheWay: WatchPartyState | null = null;
   /** The Watch Party this device last took part in, and the device id it had then. */
   let tookPart: { partyId: string; deviceId: DeviceId } | null = null;
+  /** The Watch Party the other Viewer left, whose player this device keeps open until the Viewer stops. */
+  let stayedIn: WatchPartyState | null = null;
+  let left: LeftNotice | null = null;
 
   function changed() {
     for (const listener of [...listeners]) listener();
@@ -180,8 +219,19 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     party = message.party;
     rememberTakingPart();
     const phase = party?.phase;
-    if (party && phase?.name === "ended" && phase.by !== me()) {
+    const viewer = me();
+    if (party && phase?.name === "ended" && phase.reason === "left" && phase.by !== viewer && viewer !== null &&
+      party.activeDevices[viewer] === client.identity?.deviceId) {
+      // The other Viewer left the Watch Party this device takes part in: its player stays, and the Viewer chooses.
+      stayedIn = party;
+      left = { title: party.title, episode: party.episode, by: phase.by };
+    } else if (party && phase?.name === "ended" && (phase.by !== viewer || phase.reason === "finished")) {
       ended = { title: party.title, episode: party.episode, reason: phase.reason, by: phase.by };
+    }
+    // Taking part in another Watch Party replaces the player kept open alone.
+    if (activeHere()) {
+      stayedIn = null;
+      left = null;
     }
     changed();
   });
@@ -198,6 +248,14 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
     get activeHere() {
       return activeHere();
+    },
+
+    get playerParty() {
+      return activeHere() ? live() : stayedIn;
+    },
+
+    get left() {
+      return left;
     },
 
     get elsewhere() {
@@ -274,7 +332,34 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       client.send({ type: "watchParty:playback", partyId, change });
     },
 
+    titleEnded(partyId, episode, position, next) {
+      client.send({ type: "watchParty:ended", partyId, episode, position, next });
+    },
+
     changeEpisode,
+
+    cancelNextEpisode() {
+      const current = live();
+      if (current?.phase.name === "next-episode" && activeHere()) {
+        client.send({ type: "watchParty:cancelNext", partyId: current.id });
+      }
+    },
+
+    leave() {
+      const current = live();
+      if (current && activeHere()) client.send({ type: "watchParty:leave", partyId: current.id });
+    },
+
+    keepWatchingAlone() {
+      left = null;
+      changed();
+    },
+
+    stop() {
+      left = null;
+      stayedIn = null;
+      changed();
+    },
 
     subscribe(listener) {
       listeners.add(listener);

@@ -15,6 +15,7 @@ import type { Playable } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
+import { episodeAfter, type EpisodeGuide } from "./episodeGuide";
 import {
   takesPlaybackChanges,
   type Episode,
@@ -45,6 +46,8 @@ export interface PartySyncView {
    * (`describeChange` in `./changeMessage.ts` words it); null otherwise.
    */
   lastChange: WatchPartyChange | null;
+  /** "Next episode in 10s · Cancel": the episode both move to, and the seconds left; null otherwise. */
+  nextEpisode: { episode: Episode; secondsLeft: number } | null;
 }
 
 export interface PartySync {
@@ -65,6 +68,8 @@ export interface PartySyncOptions {
   frame: PlayerFrame;
   /** Passed to the adapter: how long a Source may take to load. */
   readyTimeoutMs?: number;
+  /** Where the episode after the one that ended is looked up. */
+  episodes: EpisodeGuide;
 }
 
 export function playableOf(party: Pick<WatchPartyState, "title" | "episode">): Playable {
@@ -139,7 +144,14 @@ export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
   return { playing, position: anchor.position + elapsed };
 }
 
-export function createPartySync({ watchParty, client, clock, frame, readyTimeoutMs }: PartySyncOptions): PartySync {
+export function createPartySync({
+  watchParty,
+  client,
+  clock,
+  frame,
+  readyTimeoutMs,
+  episodes,
+}: PartySyncOptions): PartySync {
   const listeners = new Set<() => void>();
   let adapter: SyncableSourceAdapter | null = null;
   let view: PartySyncView = {
@@ -148,6 +160,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     countdown: null,
     gettingReady: false,
     lastChange: null,
+    nextEpisode: null,
   };
   /**
    * The player as last heard from it (or as last told: commands count as
@@ -165,6 +178,9 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   /** The shared state last looked at for a change message, by `seq`. */
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
+  /** The loaded Title's length, once the player reported it. */
+  let duration: number | null = null;
+  let nextEpisodeTimer: TimerId | null = null;
   let destroyed = false;
 
   function setView(next: Partial<PartySyncView>) {
@@ -174,9 +190,16 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     for (const listener of [...listeners]) listener();
   }
 
+  /**
+   * The Watch Party this player is for: the one there is as it opens. Once
+   * that one ends, the player is no longer synced (the other Viewer left:
+   * this Viewer may keep watching alone), whatever Watch Party comes next.
+   */
+  const partyId = watchParty.party?.id ?? null;
+
   function live() {
     const party = watchParty.party;
-    return party && party.phase.name !== "ended" ? party : null;
+    return party && party.id === partyId && party.phase.name !== "ended" ? party : null;
   }
 
   function playerPosition() {
@@ -219,7 +242,11 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   }
 
   function heard(event: PlayerEvent) {
+    // The player moved to another episode by itself: nothing it says counts until it loads anew.
+    if (loaded === null) return;
     switch (event.type) {
+      case "episode":
+        return heardEpisode(event);
       case "ready":
         setView({ player: "ready" });
         reportReady();
@@ -243,7 +270,10 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       }
       case "timeupdate":
         playerIsAt(event.position);
+        if (event.duration !== undefined) duration = event.duration;
         return;
+      case "ended":
+        return heardEnded();
       case "error":
         if (event.reason === "not-ready") setView({ player: "failed" });
         return;
@@ -264,8 +294,58 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       else player.paused = event.type === "pause";
     }
     const changed = player.paused !== before.paused || player.rate !== before.rate;
+    // The player stopped by itself at the end of the Title; "ended" follows.
+    if (!echo && event.type === "pause" && atTheEnd()) return;
     if (!echo && changed && sentAsViewerChange(event)) return;
     apply();
+  }
+
+  /**
+   * The Viewer chose another episode in the Source's own player, which
+   * moved there by itself: both Viewers move to it, and the player loads it
+   * anew with the other's. (The same episode: the player loads it anew where
+   * the Watch Party is.)
+   */
+  function heardEpisode({ season, episode }: Episode) {
+    const party = live();
+    loaded = null;
+    const current = party?.episode;
+    if (current && (current.season !== season || current.episode !== episode)) {
+      watchParty.changeEpisode({ season, episode });
+    } else {
+      followParty();
+    }
+  }
+
+  /** How close to the end of the Title a player that stops counts as having reached it. */
+  const END_TOLERANCE_S = 1;
+
+  function atTheEnd() {
+    return duration !== null && playerPosition() >= duration - END_TOLERANCE_S;
+  }
+
+  /**
+   * The player reached the end of the Title: tells the coordinator, with the
+   * episode after it (looked up in the episode guide) for a TV show.
+   */
+  function heardEnded() {
+    playerIsAt(duration ?? playerPosition());
+    player.paused = true;
+    const party = live();
+    if (!party || view.player !== "ready" || !takesPlaybackChanges(party.phase)) return;
+    const { id, title } = party;
+    const episode = loadedEpisode;
+    const position = playerPosition();
+    if (!episode) {
+      watchParty.titleEnded(id, null, position, null);
+      return;
+    }
+    episodes.episodesOf(title.tmdbId).then(
+      (show) => {
+        if (!destroyed) watchParty.titleEnded(id, episode, position, episodeAfter(show, episode));
+      },
+      (error: unknown) => console.error(`Could not look up the episode after S${episode.season}E${episode.episode}`, error),
+    );
   }
 
   /**
@@ -310,6 +390,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     if (key === loaded) return;
     loaded = key;
     loadedEpisode = party.episode;
+    duration = null;
     echoes.clear();
     reportedReadyFor = null;
     const startAt = anchorAt(party.anchor, client.serverNow()).position;
@@ -351,6 +432,24 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     countdownTimer = clock.setTimeout(countDown, remaining - (secondsLeft - 1) * 1000);
   }
 
+  /** "Next episode in 10s": counts the seconds until both move on, on the server's clock. */
+  function showNextEpisode() {
+    if (nextEpisodeTimer !== null) clock.clearTimeout(nextEpisodeTimer);
+    nextEpisodeTimer = null;
+    const phase = live()?.phase;
+    if (phase?.name !== "next-episode") {
+      setView({ nextEpisode: null });
+      return;
+    }
+    const remaining = phase.at - client.serverNow();
+    const secondsLeft = Math.max(0, Math.ceil(remaining / 1000));
+    const shown = view.nextEpisode;
+    if (shown?.episode !== phase.next || shown.secondsLeft !== secondsLeft) {
+      setView({ nextEpisode: { episode: phase.next, secondsLeft } });
+    }
+    if (secondsLeft > 0) nextEpisodeTimer = clock.setTimeout(showNextEpisode, remaining - (secondsLeft - 1) * 1000);
+  }
+
   /**
    * "Mariam paused at 1:02:14": shows the other Viewer's change for a few
    * seconds, once, when the state that made it arrives.
@@ -370,7 +469,14 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
 
   function followParty() {
     const party = live();
-    if (destroyed || !party) return;
+    if (destroyed) return;
+    if (!party) {
+      // Its Watch Party is over (the other Viewer left): nothing to wait or count down for any more.
+      setView({ waitingFor: null, gettingReady: false });
+      countDown();
+      showNextEpisode();
+      return;
+    }
     load(party);
     setView({
       waitingFor: party.phase.name === "inviting" ? otherViewer(party.starter) : null,
@@ -379,6 +485,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     tellChange(party);
     reportReady();
     countDown();
+    showNextEpisode();
   }
 
   followParty();
@@ -399,6 +506,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
       stopFollowing();
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
       if (changeTimer !== null) clock.clearTimeout(changeTimer);
+      if (nextEpisodeTimer !== null) clock.clearTimeout(nextEpisodeTimer);
       adapter?.destroy();
       adapter = null;
       listeners.clear();

@@ -39,12 +39,18 @@ export interface FakePlayerControls {
   setSpeed(rate: number): void;
   /** A personal setting: the player's volume, 0 to 1. */
   setVolume(volume: number): void;
+  /**
+   * Picks another episode in the player's own episode list (or presses its
+   * next-episode button): the player moves there by itself. Only on a
+   * Source whose player keeps these in a Watch Party (`playerHasOwnEpisodeList`).
+   */
+  chooseEpisode(episode: { season: number; episode: number }): void;
 }
 
 /** A Source's player, as a test sees it. */
 export interface FakeSourcePlayer {
   readonly sourceId: SourceId;
-  /** What the embed URL asked to play. */
+  /** What the player plays: what the embed URL asked for, unless the Viewer chose another episode in it. */
   readonly playable: Playable;
   readonly ready: boolean;
   readonly paused: boolean;
@@ -52,6 +58,8 @@ export interface FakeSourcePlayer {
   readonly position: number;
   readonly rate: number;
   readonly volume: number;
+  /** How long the Title is, in seconds. At the end, the player pauses and says it ended. */
+  readonly duration: number;
   /** The Viewer in front of this player, using the Source's own controls. */
   readonly controls: FakePlayerControls;
   /**
@@ -102,6 +110,12 @@ interface Dialect {
   receive(data: unknown, video: FakeVideo, reply: (data: unknown) => void): void;
   /** The message the player posts for `event`; null when this Source posts none. */
   message(event: VideoEvent, video: FakeVideo): unknown;
+  /**
+   * The message the player posts once it moved to another episode by itself
+   * (its own episode list or next-episode button). Absent when the Watch
+   * Party's embed URL leaves the player without those.
+   */
+  episodeChosen?(episode: { season: number; episode: number }): unknown;
 }
 
 /** CineSrc, after https://cinesrc.st/docs (November 2026). */
@@ -164,6 +178,11 @@ const cinesrc: Dialect = {
         return { type };
     }
   },
+
+  // `autonext=false` turns off the automatic next episode only: the episode list and next button stay.
+  episodeChosen({ season, episode }) {
+    return { type: "cinesrc:nextepisode", season, episode, internalNavigation: true, source: "episode-selector" };
+  },
 };
 
 /** Every Syncable Source with an adapter has a fake player here. */
@@ -190,7 +209,9 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
     const source = Object.entries(DIALECTS).find(([id]) => getSource(id as SourceId).origins.includes(url.origin));
     if (!source) throw new Error(`No fake player for ${url.origin}`);
     const [sourceId, dialect] = source as [SourceId, Dialect];
-    const { playable, startAt, autoplay } = dialect.parseUrl(url);
+    const asked = dialect.parseUrl(url);
+    const { startAt, autoplay } = asked;
+    let playable = asked.playable;
     const duration = playable.kind === "movie" ? MOVIE_SECONDS : EPISODE_SECONDS;
     let ready = false;
     let stopped = false;
@@ -235,6 +256,25 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       ticker = null;
     }
 
+    /** While it plays: the timer that stops the video at the end of the Title. */
+    let ending: unknown = null;
+
+    /** (Re)sets the end of playback, after anything that moves it. */
+    function watchForTheEnd() {
+      if (ending !== null) clock.clearTimeout(ending);
+      ending = null;
+      if (paused || seeking !== null) return;
+      ending = clock.setTimeout(() => {
+        ending = null;
+        // Like a <video>: at the end it pauses, says so, then says it ended.
+        settle();
+        paused = true;
+        stopTicking();
+        post("pause");
+        post("ended");
+      }, ((duration - video.position) / rate) * 1000);
+    }
+
     const video: FakeVideo = {
       get paused() {
         return paused;
@@ -256,12 +296,14 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         paused = false;
         post("play");
         tick();
+        watchForTheEnd();
       },
       pause() {
         if (paused) return;
         settle();
         paused = true;
         stopTicking();
+        watchForTheEnd();
         post("pause");
       },
       seek(position) {
@@ -273,13 +315,16 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         seeking = null;
         if (!options.seekMs) {
           post("seeked");
+          watchForTheEnd();
           return;
         }
         seeking = clock.setTimeout(() => {
           seeking = null;
           since = clock.now();
           post("seeked");
+          watchForTheEnd();
         }, options.seekMs);
+        watchForTheEnd();
       },
       setRate(next) {
         // Like a <video>: "ratechange" only when the rate changes.
@@ -287,6 +332,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         settle();
         rate = next;
         post("ratechange");
+        watchForTheEnd();
       },
       setVolume(next) {
         if (!Number.isFinite(next) || next < 0 || next > 1 || next === volume) return;
@@ -307,11 +353,24 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       seek: (position) => press(() => video.seek(position)),
       setSpeed: (next) => press(() => video.setRate(next)),
       setVolume: (next) => press(() => video.setVolume(next)),
+      chooseEpisode: (episode) =>
+        press(() => {
+          const chosen = dialect.episodeChosen?.(episode);
+          if (!chosen || playable.kind !== "episode") throw new Error(`${sourceId}'s player has no episode list here.`);
+          // It navigates inside the iframe and plays the episode from its start.
+          playable = { ...playable, ...episode };
+          base = 0;
+          since = clock.now();
+          watchForTheEnd();
+          postToSite(url.origin, chosen);
+        }),
     };
 
     const player: FakeSourcePlayer = {
       sourceId,
-      playable,
+      get playable() {
+        return playable;
+      },
       get ready() {
         return ready;
       },
@@ -327,6 +386,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       get volume() {
         return volume;
       },
+      duration,
       controls,
       postReadyFrom(origin) {
         postToSite(origin, dialect.message("ready", video));
@@ -354,6 +414,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         stopTicking();
         if (loading !== null) clock.clearTimeout(loading);
         if (seeking !== null) clock.clearTimeout(seeking);
+        if (ending !== null) clock.clearTimeout(ending);
       },
     };
   }
@@ -387,6 +448,14 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       listeners.clear();
     },
   };
+}
+
+/**
+ * Whether the player of `source` keeps its own episode list (or next-episode
+ * button) in a Watch Party, so `controls.chooseEpisode` works there.
+ */
+export function playerHasOwnEpisodeList(source: AdaptedSourceId): boolean {
+  return DIALECTS[source].episodeChosen !== undefined;
 }
 
 /** The Syncable Sources that have a fake player, i.e. every one with an adapter. */
