@@ -5,6 +5,7 @@
  * keyed on the Watch Party, while this device takes part.
  */
 import { VIEWER_NAMES } from "~/models/Viewer";
+import { describeChange } from "~/realtime/watchParty/changeMessage";
 import { getSource } from "~/utils/sources";
 
 const watchParty = useWatchParty();
@@ -17,6 +18,15 @@ const iframe = computed(() => shell.value?.iframe);
 const { src, view } = usePartySync(iframe);
 
 const sourceName = computed(() => getSource(party.value.source).name);
+
+// The episode picker follows the Watch Party; choosing another episode there moves both Viewers to it.
+const chosen = reactive({ season: initial.episode?.season ?? 1, episode: initial.episode?.episode ?? 1 });
+watch(() => party.value.episode, (episode) => {
+    if (episode) Object.assign(chosen, episode);
+});
+watch(() => [chosen.season, chosen.episode] as const, ([season, episode]) => {
+    watchParty.changeEpisode({ season, episode });
+});
 </script>
 
 <template>
@@ -37,7 +47,15 @@ const sourceName = computed(() => getSource(party.value.source).name);
             <div v-else-if="view.gettingReady" class="rounded-lg bg-black/80 px-6 py-4 text-xl">Getting ready…</div>
             <div v-else-if="view.player === 'loading'" class="text-center">Loading {{ sourceName }}…</div>
         </div>
+        <!-- "Mariam paused at 1:02:14": the other Viewer's change, for a few seconds. -->
+        <div class="absolute top-16 left-1/2 -translate-x-1/2" aria-live="polite">
+            <div v-if="view.lastChange" class="rounded-lg bg-black/80 px-4 py-2 whitespace-nowrap">
+                {{ describeChange(view.lastChange) }}
+            </div>
+        </div>
         <template #controls>
+            <WatchEpisodePicker v-if="party.episode" v-model:season="chosen.season" v-model:episode="chosen.episode"
+                :tmdb-id="party.title.tmdbId"></WatchEpisodePicker>
             <span class="px-2 text-muted-color">Watching together on {{ sourceName }}</span>
         </template>
     </WatchPlayerShell>

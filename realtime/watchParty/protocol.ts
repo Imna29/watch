@@ -78,6 +78,12 @@ export interface WatchPartyState {
   /** The Viewer who made the last change. */
   lastChangeBy: Viewer;
   /**
+   * The last change a Viewer made to playback, for the other Viewer's change
+   * message ("Mariam paused at 1:02:14"); null before the first. Later
+   * states carry it on: it is news only in the state whose `seq` it has.
+   */
+  lastChange: WatchPartyChange | null;
+  /**
    * The one device of each Viewer that takes part: the newest one they
    * joined from. Null for a Viewer not (yet) in it.
    */
@@ -119,6 +125,42 @@ export interface PlayerStatusMessage {
   type: "watchParty:player";
   partyId: string;
   status: "ready";
+  /** The episode the player loaded (null: a movie): a report about an earlier episode does not count. */
+  episode: Episode | null;
+}
+
+/**
+ * A change a Viewer made in the Source's own controls, at `position`
+ * seconds into the Title (for "seek": the position it moved to). "rate"
+ * (the speed) only comes from a Source whose adapter `canSetRate`.
+ */
+export type PlaybackChange =
+  | { kind: "play" | "pause" | "seek"; position: number }
+  | { kind: "rate"; position: number; rate: number };
+
+/** A change `by` made, in the shared state numbered `seq`. */
+export type WatchPartyChange = (PlaybackChange | { kind: "episode"; episode: Episode }) & { by: Viewer; seq: number };
+
+/**
+ * Whether Viewers control playback in this phase: both are in and the Title
+ * has started. In any other phase each player just follows the shared state.
+ */
+export function takesPlaybackChanges(phase: WatchPartyPhase) {
+  return phase.name === "playing" || phase.name === "paused";
+}
+
+/** The Viewer changed playback in this device's player: apply it for both Viewers. */
+export interface PlaybackMessage {
+  type: "watchParty:playback";
+  partyId: string;
+  change: PlaybackChange;
+}
+
+/** The Viewer chose another episode of the TV show: both Viewers move to it. */
+export interface ChangeEpisodeMessage {
+  type: "watchParty:episode";
+  partyId: string;
+  episode: Episode;
 }
 
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
@@ -138,6 +180,8 @@ export type WatchPartyDeviceMessage =
   | JoinWatchPartyMessage
   | TakeOverWatchPartyMessage
   | CancelWatchPartyMessage
-  | PlayerStatusMessage;
+  | PlayerStatusMessage
+  | PlaybackMessage
+  | ChangeEpisodeMessage;
 
 export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;

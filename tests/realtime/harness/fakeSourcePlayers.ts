@@ -18,6 +18,27 @@ export interface FakePlayerOptions {
   loadMs?: number;
   /** No server of the Source has the Title: the player never gets ready. */
   unavailable?: boolean;
+  /**
+   * How long a seek takes to buffer: the video stands still at the new
+   * position meanwhile, and "seeked" comes only after it. Default: at once.
+   */
+  seekMs?: number;
+}
+
+/**
+ * What a Viewer does with the Source's own controls, inside the player. The
+ * player acts as it would on a real click and posts what its Source posts
+ * about it. Throws before the player is ready: there is nothing to press yet.
+ */
+export interface FakePlayerControls {
+  play(): void;
+  pause(): void;
+  /** Drags the progress bar to `position` seconds. */
+  seek(position: number): void;
+  /** Picks a speed in the player's speed menu. */
+  setSpeed(rate: number): void;
+  /** A personal setting: the player's volume, 0 to 1. */
+  setVolume(volume: number): void;
 }
 
 /** A Source's player, as a test sees it. */
@@ -30,6 +51,9 @@ export interface FakeSourcePlayer {
   /** Seconds into the Title, now. */
   readonly position: number;
   readonly rate: number;
+  readonly volume: number;
+  /** The Viewer in front of this player, using the Source's own controls. */
+  readonly controls: FakePlayerControls;
   /**
    * Posts this Source's "ready" message from `origin` instead of the Source's
    * own: what a page the iframe was sent to (an ad, say) could post.
@@ -45,18 +69,29 @@ export interface FakeFrame extends PlayerFrame {
   remove(): void;
 }
 
-type VideoEvent = "ready" | "play" | "pause" | "seeking" | "seeked" | "timeupdate" | "ratechange" | "ended";
+type VideoEvent =
+  | "ready"
+  | "play"
+  | "pause"
+  | "seeking"
+  | "seeked"
+  | "timeupdate"
+  | "ratechange"
+  | "volumechange"
+  | "ended";
 
 /** The simulated `<video>` inside a fake player. */
 interface FakeVideo {
   readonly paused: boolean;
   readonly position: number;
   readonly rate: number;
+  readonly volume: number;
   readonly duration: number;
   play(): void;
   pause(): void;
   seek(position: number): void;
   setRate(rate: number): void;
+  setVolume(volume: number): void;
 }
 
 /** How one Syncable Source's player talks. */
@@ -123,6 +158,8 @@ const cinesrc: Dialect = {
         return { type, currentTime: video.position, duration: video.duration };
       case "ratechange":
         return { type, playbackRate: video.rate };
+      case "volumechange":
+        return { type, volume: video.volume, muted: false };
       default:
         return { type };
     }
@@ -159,11 +196,14 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
     let stopped = false;
     let paused = true;
     let rate = 1;
+    let volume = 1;
     // The position is `base` at `since`, and moves on from there while playing.
     let base = startAt;
     let since = clock.now();
     let ticker: unknown = null;
     let loading: unknown = null;
+    /** While a seek buffers (`seekMs`): the timer that ends it. The video stands still meanwhile. */
+    let seeking: unknown = null;
 
     function postToSite(origin: string, data: unknown) {
       if (data === null) return;
@@ -200,11 +240,14 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         return paused;
       },
       get position() {
-        const elapsed = paused ? 0 : ((clock.now() - since) / 1000) * rate;
+        const elapsed = paused || seeking !== null ? 0 : ((clock.now() - since) / 1000) * rate;
         return Math.min(duration, base + elapsed);
       },
       get rate() {
         return rate;
+      },
+      get volume() {
+        return volume;
       },
       duration,
       play() {
@@ -226,14 +269,44 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         post("seeking");
         base = Math.max(0, Math.min(duration, position));
         since = clock.now();
-        post("seeked");
+        if (seeking !== null) clock.clearTimeout(seeking);
+        seeking = null;
+        if (!options.seekMs) {
+          post("seeked");
+          return;
+        }
+        seeking = clock.setTimeout(() => {
+          seeking = null;
+          since = clock.now();
+          post("seeked");
+        }, options.seekMs);
       },
       setRate(next) {
-        if (!Number.isFinite(next) || next <= 0) return;
+        // Like a <video>: "ratechange" only when the rate changes.
+        if (!Number.isFinite(next) || next <= 0 || next === rate) return;
         settle();
         rate = next;
         post("ratechange");
       },
+      setVolume(next) {
+        if (!Number.isFinite(next) || next < 0 || next > 1 || next === volume) return;
+        volume = next;
+        post("volumechange");
+      },
+    };
+
+    /** The Viewer's hand on the player's own controls. */
+    function press(action: () => void) {
+      if (!ready) throw new Error("The Viewer pressed a control before the player was ready.");
+      action();
+    }
+
+    const controls: FakePlayerControls = {
+      play: () => press(() => video.play()),
+      pause: () => press(() => video.pause()),
+      seek: (position) => press(() => video.seek(position)),
+      setSpeed: (next) => press(() => video.setRate(next)),
+      setVolume: (next) => press(() => video.setVolume(next)),
     };
 
     const player: FakeSourcePlayer = {
@@ -251,6 +324,10 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
       get rate() {
         return rate;
       },
+      get volume() {
+        return volume;
+      },
+      controls,
       postReadyFrom(origin) {
         postToSite(origin, dialect.message("ready", video));
       },
@@ -276,6 +353,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         stopped = true;
         stopTicking();
         if (loading !== null) clock.clearTimeout(loading);
+        if (seeking !== null) clock.clearTimeout(seeking);
       },
     };
   }

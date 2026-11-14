@@ -8,7 +8,7 @@ import type { Viewer } from "../../models/Viewer";
 import type { DeviceId } from "../connection/protocol";
 import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
-import type { Episode, WatchPartyEndReason, WatchPartyState } from "./protocol";
+import type { Episode, PlaybackChange, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
 /** How a Watch Party this device knew about ended, told to the Viewer who did not end it. */
 export interface EndedNotice {
@@ -50,7 +50,12 @@ export interface DeviceWatchParty {
   readonly choice: StartChoice | null;
   /** The other Viewer ended a Watch Party: what to tell this Viewer, until dismissed. */
   readonly ended: EndedNotice | null;
-  /** "Watch together" on `title` (with `episode`, for a TV show). */
+  /**
+   * "Watch together" on `title` (with `episode`, for a TV show). From the
+   * device that takes part in a Watch Party: another episode of its TV show
+   * moves both Viewers there (`changeEpisode`), and a different Title ends
+   * it and invites the other Viewer to the new one, without asking first.
+   */
   start(title: TitleRef, episode: Episode | null): void;
   /**
    * Joins the invite (or the choice's Watch Party) from this device; or
@@ -63,8 +68,16 @@ export interface DeviceWatchParty {
   /** Ends the Watch Party for both Viewers ("Cancel" while it waits). */
   cancel(): void;
   dismissEnded(): void;
-  /** Party sync: this device's player loaded Watch Party `partyId`'s Title. */
-  playerReady(partyId: string): void;
+  /** Party sync: this device's player loaded Watch Party `partyId`'s Title (`episode` of it, for a TV show). */
+  playerReady(partyId: string, episode: Episode | null): void;
+  /** Party sync: the Viewer changed playback in this device's player. */
+  playback(partyId: string, change: PlaybackChange): void;
+  /**
+   * Moves both Viewers to another `episode` of the Watch Party's TV show.
+   * While the Watch Party still waits for the other Viewer, it starts anew
+   * on that episode (a new invite) instead.
+   */
+  changeEpisode(episode: Episode): void;
   /** Calls `listener` after every change. Returns a function that stops it. */
   subscribe(listener: () => void): () => void;
 }
@@ -141,7 +154,29 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     changed();
   }
 
+  function changeEpisode(episode: Episode) {
+    const current = live();
+    if (!current?.episode || !activeHere()) return;
+    if (current.episode.season === episode.season && current.episode.episode === episode.episode) return;
+    if (current.phase.name === "inviting") send({ title: current.title, episode }, current.id);
+    else client.send({ type: "watchParty:episode", partyId: current.id, episode });
+  }
+
+  /**
+   * The newest shared state's `seq` heard on this connection. A state that
+   * arrives after a newer one is stale and ignored. A new connection may
+   * reach a restarted server, which numbers from scratch: it starts over.
+   */
+  let newestSeq = -1;
+  client.on("welcome", () => {
+    newestSeq = -1;
+  });
+
   client.on("watchParty", (message) => {
+    if (message.party) {
+      if (message.party.seq <= newestSeq) return;
+      newestSeq = message.party.seq;
+    }
     party = message.party;
     rememberTakingPart();
     const phase = party?.phase;
@@ -187,7 +222,16 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
     },
 
     start(title, episode) {
-      send({ title, episode }, null);
+      const current = live();
+      if (!current || !activeHere()) {
+        send({ title, episode }, null);
+        return;
+      }
+      // From the device that takes part: another episode moves both Viewers to it,
+      // while a different Title ends this Watch Party and invites the other Viewer anew.
+      const sameTitle = current.title.tmdbId === title.tmdbId && current.title.contentType === title.contentType;
+      if (!sameTitle) send({ title, episode }, current.id);
+      else if (episode) changeEpisode(episode);
     },
 
     join() {
@@ -222,9 +266,15 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
       changed();
     },
 
-    playerReady(partyId) {
-      client.send({ type: "watchParty:player", partyId, status: "ready" });
+    playerReady(partyId, episode) {
+      client.send({ type: "watchParty:player", partyId, status: "ready", episode });
     },
+
+    playback(partyId, change) {
+      client.send({ type: "watchParty:playback", partyId, change });
+    },
+
+    changeEpisode,
 
     subscribe(listener) {
       listeners.add(listener);

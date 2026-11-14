@@ -22,7 +22,9 @@
  * While the
  * device takes part in a Watch Party it shows the Watch Party player, as the
  * app's layout does: real party sync driving a fake Source player
- * (`device.partySync`, `device.player`).
+ * (`device.partySync`, `device.player`). The Viewer in front of it uses the
+ * Source's own controls through `device.player.controls` (play, pause,
+ * seek, setSpeed, setVolume).
  *
  * Watch Party scenarios run once per Syncable Source:
  *
@@ -32,14 +34,20 @@
  *   const giorgi = h.device("giorgi");
  *   const mariam = h.device("mariam", { player: { loadMs: 5 * SECOND } });
  *   ...
- *   expect(mariam.player?.position).toBeCloseTo(giorgi.player!.position, 1);
+ *   mariam.player!.controls.pause();
+ *   h.advance(SECOND);
+ *   expect(giorgi.player?.paused).toBe(true);
  * ```
  */
 import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
-import { WATCH_PARTY_SOURCES, type AdaptedSourceId } from "../../../realtime/watchParty/sources";
+import {
+  SYNCABLE_SOURCE_ADAPTERS,
+  WATCH_PARTY_SOURCES,
+  type AdaptedSourceId,
+} from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
 import { createFakeHistory } from "./fakeHistory";
 import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
@@ -79,7 +87,10 @@ export interface TestDevice extends RealtimeDevice, DeviceTraffic {
   readonly media: FakeCallPlatform;
   /** The Viewer closes the site on this device (or the browser tab, or the browser). */
   closeSite(): void;
-  /** Changes this device's one-way network delay. */
+  /**
+   * Changes this device's one-way network delay. Messages already on their
+   * way keep theirs, so a shorter delay lets later messages overtake them.
+   */
   setDelay(ms: number): void;
   /** This device's network silently stops carrying anything, both ways. */
   drop(): void;
@@ -98,6 +109,18 @@ export function syncableSourcesUnderTest(): AdaptedSourceId[] {
     throw new Error(`Add a fake player for ${missing.join(", ")} in tests/realtime/harness/fakeSourcePlayers.ts`);
   }
   return [...WATCH_PARTY_SOURCES];
+}
+
+/**
+ * Whether the adapter of `source` can change the playback speed
+ * (`canSetRate`; VidFast's cannot). Speed scenarios run only where it can:
+ * `it.runIf(sourceCanSetRate(source))(...)`.
+ */
+export function sourceCanSetRate(source: AdaptedSourceId): boolean {
+  const clock = createFakeClock();
+  const adapter = SYNCABLE_SOURCE_ADAPTERS[source]({ frame: createFakeFrame(clock), clock });
+  adapter.destroy();
+  return adapter.canSetRate;
 }
 
 export interface HarnessOptions {

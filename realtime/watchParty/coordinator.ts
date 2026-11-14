@@ -22,6 +22,8 @@ import type {
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
+import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
+import { afterEpisodeChange, afterPlaybackChange, playbackSchema, sameEpisode } from "./sharedControls";
 import { WATCH_PARTY_SOURCES } from "./sources";
 
 /** The 3-2-1 before both players start. */
@@ -78,7 +80,10 @@ const playerStatusSchema = z.object({
   type: z.literal("watchParty:player"),
   partyId: z.string().max(100),
   status: z.literal("ready"),
+  episode: episodeSchema.nullable(),
 });
+
+const changeEpisodeSchema = partyIntentSchema("watchParty:episode").extend({ episode: episodeSchema });
 
 /**
  * The intents any device of a Viewer may send: starting a Watch Party,
@@ -229,6 +234,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               phase: { name: "inviting" },
               anchor: { position: 0, serverTime: now, playing: false, rate: 1 },
               lastChangeBy: from.viewer,
+              lastChange: null,
               activeDevices,
             });
           },
@@ -258,8 +264,8 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
 
         "watchParty:player": {
           schema: playerStatusSchema satisfies z.ZodType<PlayerStatusMessage>,
-          handle(from, { partyId }) {
-            if (party?.id !== partyId) return;
+          handle(from, { partyId, episode }) {
+            if (party?.id !== partyId || !sameEpisode(episode, party.episode)) return;
             readyDevices.add(from.id);
             startCountdownWhenReady();
           },
@@ -269,6 +275,40 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
           schema: partyIntentSchema("watchParty:cancel") satisfies z.ZodType<CancelWatchPartyMessage>,
           handle(from, { partyId }) {
             if (party?.id === partyId && mayEnd(from, party)) end("cancelled", from.viewer);
+          },
+        },
+
+        // Shared controls: play, pause, seek or speed (from the active device, as `onlyFromActiveDevices` ensures).
+        "watchParty:playback": {
+          schema: playbackSchema,
+          handle(from, { partyId, change }) {
+            if (party?.id !== partyId || !takesPlaybackChanges(party.phase)) return;
+            publish({
+              ...party,
+              ...afterPlaybackChange(party, change, context.now()),
+              lastChangeBy: from.viewer,
+              // The seq `publish` gives this state.
+              lastChange: { ...change, by: from.viewer, seq: seq + 1 },
+            });
+          },
+        },
+
+        // Shared controls: another episode, once both Viewers are in (while it waits, the starter starts anew).
+        "watchParty:episode": {
+          schema: changeEpisodeSchema satisfies z.ZodType<ChangeEpisodeMessage>,
+          handle(from, { partyId, episode }) {
+            if (party?.id !== partyId || party.phase.name === "inviting" || party.episode === null) return;
+            if (sameEpisode(episode, party.episode)) return;
+            // Both players load the episode anew, and report when they have.
+            readyDevices = new Set();
+            publish({
+              ...party,
+              ...afterEpisodeChange(party, episode, context.now()),
+              lastChangeBy: from.viewer,
+              // The seq `publish` gives this state.
+              lastChange: { kind: "episode", episode, by: from.viewer, seq: seq + 1 },
+            });
+            recordForBoth(party);
           },
         },
       }),
