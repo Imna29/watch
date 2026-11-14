@@ -24,7 +24,7 @@ per-Viewer playlists and watched-episode tracking.
 | Production build | `bun run build` |
 | Run the production build | `bun run start` |
 | Local Postgres up / down | `docker compose -f compose.dev.yaml up -d --wait` / `... down` (`-v` wipes data) |
-| Hash a Viewer's password | `bun run hash-password` |
+| Hash a Viewer's password | `bun run hash-password --viewer giorgi` (or `mariam`) |
 | Self-hosted stack up / down | `docker compose up -d --build --wait` / `docker compose down` (see "Self-hosting") |
 
 Typecheck baseline: 2 pre-existing `error TS` lines. Do not increase it:
@@ -48,6 +48,14 @@ has both Viewers' password hashes and the cookie secret (see `.env.example`).
 - `server/viewer/signIn.ts` owns who is asking: password to Viewer, the cookie,
   throttling and the startup check. Framework-free, tested in
   `tests/server/viewerSignIn.test.ts` with a fake clock.
+- Known limit: one password for both Viewers. Each hash has its own salt, so
+  the startup check only catches the same hash pasted twice; the server
+  cannot tell two hashes of one password apart from the hashes alone. When
+  such a password is used, the sign-in signs nobody in and logs a
+  configuration error. To prevent it, `bun run hash-password` refuses the
+  other Viewer's password when it has their hash (from the environment,
+  which bun loads from `.env`, or `--other-hash <hash>`); `--viewer` says
+  whose password it is.
 - `server/middleware/viewer.ts` rejects every API request without a valid
   cookie except `POST /api/sign-in`. WebSocket upgrades bypass Nitro
   middleware: authorize them with
