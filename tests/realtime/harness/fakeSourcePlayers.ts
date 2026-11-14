@@ -55,6 +55,12 @@ export interface FakeSourcePlayer {
   /** The Viewer in front of this player, using the Source's own controls. */
   readonly controls: FakePlayerControls;
   /**
+   * The stream stalls for `ms` (the network is slow): the video stands still
+   * and posts no `timeupdate` until it has buffered, then plays on (if it is
+   * not paused).
+   */
+  stall(ms: number): void;
+  /**
    * Posts this Source's "ready" message from `origin` instead of the Source's
    * own: what a page the iframe was sent to (an ad, say) could post.
    */
@@ -204,6 +210,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
     let loading: unknown = null;
     /** While a seek buffers (`seekMs`): the timer that ends it. The video stands still meanwhile. */
     let seeking: unknown = null;
+    /** While the stream stalls (`stall`): the timer that ends it. The video stands still meanwhile. */
+    let stalled: unknown = null;
 
     function postToSite(origin: string, data: unknown) {
       if (data === null) return;
@@ -225,7 +233,8 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
 
     function tick() {
       ticker = clock.setTimeout(() => {
-        post("timeupdate");
+        // A seeking or stalled video's time does not move, so it reports none (a seek's comes with "seeked").
+        if (seeking === null && stalled === null) post("timeupdate");
         tick();
       }, TIMEUPDATE_MS);
     }
@@ -240,7 +249,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         return paused;
       },
       get position() {
-        const elapsed = paused || seeking !== null ? 0 : ((clock.now() - since) / 1000) * rate;
+        const elapsed = paused || seeking !== null || stalled !== null ? 0 : ((clock.now() - since) / 1000) * rate;
         return Math.min(duration, base + elapsed);
       },
       get rate() {
@@ -328,6 +337,15 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         return volume;
       },
       controls,
+      stall(ms) {
+        if (!ready) throw new Error("A stream can only stall once the player is ready.");
+        settle();
+        if (stalled !== null) clock.clearTimeout(stalled);
+        stalled = clock.setTimeout(() => {
+          stalled = null;
+          since = clock.now();
+        }, ms);
+      },
       postReadyFrom(origin) {
         postToSite(origin, dialect.message("ready", video));
       },
@@ -354,6 +372,7 @@ export function createFakeFrame(clock: Clock, options: FakePlayerOptions = {}): 
         stopTicking();
         if (loading !== null) clock.clearTimeout(loading);
         if (seeking !== null) clock.clearTimeout(seeking);
+        if (stalled !== null) clock.clearTimeout(stalled);
       },
     };
   }

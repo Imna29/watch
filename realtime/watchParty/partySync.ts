@@ -15,10 +15,11 @@ import type { Playable } from "../../utils/sources";
 import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import type { DeviceWatchParty } from "./device";
+import { POSITION_REPORT_MS } from "./drift";
 import {
+  anchorAt,
   takesPlaybackChanges,
   type Episode,
-  type PlaybackAnchor,
   type WatchPartyChange,
   type WatchPartyState,
 } from "./protocol";
@@ -126,18 +127,19 @@ function createEchoes(clock: Clock) {
       return { latest: !expected.some((echo) => channelOf(echo.type) === channel) };
     },
 
+    /** Whether a command that reports `type` is still on its way. */
+    awaiting(type: Echo["type"]) {
+      const now = clock.now();
+      return expected.some((echo) => echo.type === type && echo.until > now);
+    },
+
     clear() {
       expected = [];
     },
   };
 }
 
-/** Where `anchor` says the player should be at `serverTime`. */
-export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
-  const playing = anchor.playing && serverTime >= anchor.serverTime;
-  const elapsed = playing ? ((serverTime - anchor.serverTime) / 1000) * anchor.rate : 0;
-  return { playing, position: anchor.position + elapsed };
-}
+export { anchorAt };
 
 export function createPartySync({ watchParty, client, clock, frame, readyTimeoutMs }: PartySyncOptions): PartySync {
   const listeners = new Set<() => void>();
@@ -165,6 +167,7 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   /** The shared state last looked at for a change message, by `seq`. */
   let seenSeq: number | null = null;
   let changeTimer: TimerId | null = null;
+  let reportTimer: TimerId | null = null;
   let destroyed = false;
 
   function setView(next: Partial<PartySyncView>) {
@@ -186,6 +189,33 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
   function playerIsAt(position: number) {
     player.position = position;
     player.at = clock.now();
+  }
+
+  /** Moves the player to where the shared state is now (also when the coordinator says it drifted). */
+  function seekToParty(party: WatchPartyState) {
+    if (!adapter) return;
+    const position = anchorAt(party.anchor, client.serverNow()).position;
+    adapter.seek(position);
+    echoes.expect({ type: "seeked", position });
+    playerIsAt(position);
+  }
+
+  /**
+   * Tells the coordinator where the player is, so it can keep the players in
+   * step (`./drift.ts`). Not while a seek is on its way: the player is not
+   * where it is going yet.
+   */
+  function reportPosition() {
+    reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
+    const party = live();
+    if (!party || view.player !== "ready" || echoes.awaiting("seeked")) return;
+    watchParty.reportPosition({
+      partyId: party.id,
+      seq: party.seq,
+      position: playerPosition(),
+      serverTime: client.serverNow(),
+      blocked: false,
+    });
   }
 
   /** Moves the player to where the shared state says it should be now. */
@@ -383,6 +413,13 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
 
   followParty();
   const stopFollowing = watchParty.subscribe(followParty);
+  reportTimer = clock.setTimeout(reportPosition, POSITION_REPORT_MS);
+  // The coordinator saw the player drift from the shared state it reported on: move it there.
+  const stopCatchingUp = client.on("watchParty:catchUp", ({ partyId, seq }) => {
+    const party = live();
+    if (destroyed || view.player !== "ready" || party?.id !== partyId || party.seq !== seq) return;
+    seekToParty(party);
+  });
 
   return {
     get view() {
@@ -397,6 +434,8 @@ export function createPartySync({ watchParty, client, clock, frame, readyTimeout
     destroy() {
       destroyed = true;
       stopFollowing();
+      stopCatchingUp();
+      if (reportTimer !== null) clock.clearTimeout(reportTimer);
       if (countdownTimer !== null) clock.clearTimeout(countdownTimer);
       if (changeTimer !== null) clock.clearTimeout(changeTimer);
       adapter?.destroy();

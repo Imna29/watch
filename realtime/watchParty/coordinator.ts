@@ -23,6 +23,7 @@ import type {
   WatchPartyState,
 } from "./protocol";
 import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
+import { keepInStep, positionSchema } from "./drift";
 import { afterEpisodeChange, afterPlaybackChange, playbackSchema, sameEpisode } from "./sharedControls";
 import { WATCH_PARTY_SOURCES } from "./sources";
 
@@ -119,6 +120,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
     let readyDevices = new Set<DeviceId>();
     let seq = 0;
     let partyCount = 0;
+    const inStep = keepInStep({ context, party: () => party });
 
     /** Tells every device about the change, numbered after every earlier one. */
     function publish(next: Omit<WatchPartyState, "seq">) {
@@ -309,6 +311,14 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
               lastChange: { kind: "episode", episode, by: from.viewer, seq: seq + 1 },
             });
             recordForBoth(party);
+          },
+        },
+
+        // Staying in step: where the device's player is (from the active device, as `onlyFromActiveDevices` ensures).
+        "watchParty:position": {
+          schema: positionSchema,
+          handle(from, report) {
+            inStep.reported(from, report);
           },
         },
       }),

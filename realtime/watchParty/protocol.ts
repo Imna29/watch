@@ -27,6 +27,13 @@ export interface PlaybackAnchor {
   rate: number;
 }
 
+/** Where `anchor` says the player should be at `serverTime`. */
+export function anchorAt(anchor: PlaybackAnchor, serverTime: number) {
+  const playing = anchor.playing && serverTime >= anchor.serverTime;
+  const elapsed = playing ? ((serverTime - anchor.serverTime) / 1000) * anchor.rate : 0;
+  return { playing, position: anchor.position + elapsed };
+}
+
 /** Why a Watch Party ended. */
 export type WatchPartyEndReason =
   /** A Viewer pressed Cancel (or closed the player) and ended it for both. */
@@ -163,6 +170,22 @@ export interface ChangeEpisodeMessage {
   episode: Episode;
 }
 
+/**
+ * Where this device's player is, sent every `POSITION_REPORT_MS` (`./drift.ts`)
+ * so the coordinator can keep the players in step: `position` seconds into
+ * the Title at `serverTime`, on the server's clock, while following the
+ * shared state numbered `seq`.
+ */
+export interface PositionMessage {
+  type: "watchParty:position";
+  partyId: string;
+  seq: number;
+  position: number;
+  serverTime: number;
+  /** The browser would not start the player until the Viewer clicks (after a page reload, say). */
+  blocked: boolean;
+}
+
 /** The current Watch Party (null: none), sent to every device on connect and after every change. */
 export interface WatchPartyMessage {
   type: "watchParty";
@@ -175,6 +198,16 @@ export interface AlreadyStartedMessage {
   party: WatchPartyState;
 }
 
+/**
+ * This device's player drifted from the shared state numbered `seq`: move it
+ * to where the shared state is now.
+ */
+export interface CatchUpMessage {
+  type: "watchParty:catchUp";
+  partyId: string;
+  seq: number;
+}
+
 export type WatchPartyDeviceMessage =
   | StartWatchPartyMessage
   | JoinWatchPartyMessage
@@ -182,6 +215,7 @@ export type WatchPartyDeviceMessage =
   | CancelWatchPartyMessage
   | PlayerStatusMessage
   | PlaybackMessage
-  | ChangeEpisodeMessage;
+  | ChangeEpisodeMessage
+  | PositionMessage;
 
-export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage;
+export type WatchPartyServerMessage = WatchPartyMessage | AlreadyStartedMessage | CatchUpMessage;

@@ -8,7 +8,7 @@ import type { Viewer } from "../../models/Viewer";
 import type { DeviceId } from "../connection/protocol";
 import type { DeviceClient } from "../deviceClient";
 import type { TitleRef } from "../presence/protocol";
-import type { Episode, PlaybackChange, WatchPartyEndReason, WatchPartyState } from "./protocol";
+import type { Episode, PlaybackChange, PositionMessage, WatchPartyEndReason, WatchPartyState } from "./protocol";
 
 /** How a Watch Party this device knew about ended, told to the Viewer who did not end it. */
 export interface EndedNotice {
@@ -72,6 +72,8 @@ export interface DeviceWatchParty {
   playerReady(partyId: string, episode: Episode | null): void;
   /** Party sync: the Viewer changed playback in this device's player. */
   playback(partyId: string, change: PlaybackChange): void;
+  /** Party sync: where this device's player is, to keep the players in step (`./drift.ts`). */
+  reportPosition(report: Omit<PositionMessage, "type">): void;
   /**
    * Moves both Viewers to another `episode` of the Watch Party's TV show.
    * While the Watch Party still waits for the other Viewer, it starts anew
@@ -272,6 +274,10 @@ export function createDeviceWatchParty(client: DeviceClient): DeviceWatchParty {
 
     playback(partyId, change) {
       client.send({ type: "watchParty:playback", partyId, change });
+    },
+
+    reportPosition(report) {
+      client.send({ type: "watchParty:position", ...report });
     },
 
     changeEpisode,
