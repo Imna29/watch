@@ -35,6 +35,7 @@ export const queryKeys = {
     all: ['analyses'] as const,
     list: () => ['analyses', 'list'] as const,
     byMovie: (movieId: number) => ['analyses', 'movie', movieId] as const,
+    toGrade: () => ['analyses', 'to-grade'] as const,
   },
   search: (query: string) => ['search', query] as const,
   viewer: {

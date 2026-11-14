@@ -21,6 +21,10 @@ describe("queryKeys", () => {
     expect(queryKeys.analyses.list()).toEqual(["analyses", "list"]);
   });
 
+  it("nests the to-grade count key under the same analyses root", () => {
+    expect(queryKeys.analyses.toGrade()).toEqual(["analyses", "to-grade"]);
+  });
+
   it("includes every discover parameter in the key", () => {
     expect(queryKeys.movies.discover([1, 2], "popularity.desc", 3)).toEqual([
       "movies", "discover", [1, 2], "popularity.desc", 3,

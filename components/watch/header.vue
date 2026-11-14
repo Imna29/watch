@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { Search, X, Menu } from "@lucide/vue";
-import { VIEWER_NAMES } from "~/models/Viewer";
+import { ANALYSIS_GRADER, VIEWER_NAMES } from "~/models/Viewer";
 
 const watchStore = useWatchStore();
 const route = useRoute();
 const { data: viewer } = useViewer();
 const { mutate: signOut, isPending: isSigningOut } = useSignOut();
 const viewerName = computed(() => (viewer.value ? VIEWER_NAMES[viewer.value] : ""));
+
+// Only the grader has Analyses to grade; nobody else's header asks.
+const isGrader = computed(() => viewer.value === ANALYSIS_GRADER);
+const { data: toGrade } = useAnalysesToGrade({ enabled: isGrader });
 
 interface NavItem {
     to: string;
@@ -15,13 +19,17 @@ interface NavItem {
     badge?: string;
 }
 
-const navItems: NavItem[] = [
+const navItems = computed<NavItem[]>(() => [
     { to: "/watch", label: "Home" },
     { to: "/watch/movies", label: "Movies" },
     { to: "/watch/tvs", label: "TV Shows" },
     { to: "/watch/playlist", label: "My lists" },
-    { to: "/watch/analyses", label: "Analyses" },
-];
+    {
+        to: "/watch/analyses",
+        label: "Analyses",
+        badge: isGrader.value && toGrade.value ? `${toGrade.value} to grade` : undefined,
+    },
+]);
 
 const isActiveRoute = (path: string) => route.path === path;
 const isActiveExplore = () => route.name?.toString().includes("explore");
