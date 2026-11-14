@@ -26,10 +26,10 @@ import type {
   WatchPartyEndReason,
   WatchPartyState,
 } from "./protocol";
-import { takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
+import { changeMadeBy, takesPlaybackChanges, type ChangeEpisodeMessage } from "./protocol";
 import { keepInStep, positionSchema } from "./drift";
-import { partyIdSchema, partyIntentSchema } from "./intentSchema";
 import { afterEpisodeEnded, titleEndedSchema } from "./ending";
+import { partyIdSchema, partyIntentSchema } from "./intentSchema";
 import { afterEpisodeChange, afterPlaybackChange, episodeSchema, playbackSchema, sameEpisode } from "./sharedControls";
 import {
   afterSourceFailed,
@@ -244,8 +244,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
       publish({
         ...current,
         ...afterEpisodeChange(current, episode, context.now()),
-        // The seq `publish` gives this state.
-        ...(by && { lastChangeBy: by, lastChange: { kind: "episode", episode, by, seq: seq + 1 } }),
+        ...(by && changeMadeBy(current, by, { kind: "episode", episode })),
       });
       recordForBoth({ ...current, episode });
     }
@@ -360,9 +359,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...afterPlaybackChange(party, change, context.now()),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { ...change, by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, change),
             });
           },
         },
@@ -395,9 +392,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               phase: { name: "paused" },
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "next-cancelled", by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "next-cancelled" }),
             });
           },
         },
@@ -420,9 +415,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...afterSourceSwitch(party, source, context.now()),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "source", source, by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "source", source }),
             });
           },
         },
@@ -457,9 +450,7 @@ export function watchParty({ sources = WATCH_PARTY_SOURCES, history }: WatchPart
             publish({
               ...party,
               ...noTabShare(),
-              lastChangeBy: from.viewer,
-              // The seq `publish` gives this state.
-              lastChange: { kind: "tab-share-stopped", by: from.viewer, seq: seq + 1 },
+              ...changeMadeBy(party, from.viewer, { kind: "tab-share-stopped" }),
             });
           },
         },

@@ -30,7 +30,13 @@ import { VIEWERS, type Viewer } from "../../models/Viewer";
 import type { CoordinatorContext, Device } from "../coordinator";
 import type { DeviceId } from "../protocol";
 import { partyIntentSchema } from "./intentSchema";
-import { anchorAt, type PositionMessage, type WatchPartyEndReason, type WatchPartyState } from "./protocol";
+import {
+  anchorAt,
+  changeMadeBy,
+  type PositionMessage,
+  type WatchPartyEndReason,
+  type WatchPartyState,
+} from "./protocol";
 import { noTabShare } from "./tabShare";
 
 /** How often party sync reports where its player is. */
@@ -214,9 +220,7 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
       ...current,
       ...noTabShare(),
       phase: { name: "waiting", viewer: sharer, reason: "disconnected" },
-      lastChangeBy: sharer,
-      // The seq `publish` gives this state.
-      lastChange: { kind: "sharer-gone", by: sharer, seq: current.seq + 1 },
+      ...changeMadeBy(current, sharer, { kind: "sharer-gone" }),
     });
   }
 
