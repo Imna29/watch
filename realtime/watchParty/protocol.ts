@@ -44,7 +44,10 @@ export type WatchPartyEndReason =
   | "finished"
   /** A Viewer closed the player: the other Viewer keeps watching alone, or stops. */
   | "left"
-  /** The starter's device went away while the Watch Party still waited for the other Viewer. */
+  /**
+   * While the Watch Party still waited for the other Viewer, its starter had
+   * no device on the site for two minutes (`INVITE_GRACE_MS` in `./drift.ts`).
+   */
   | "gone";
 
 /**

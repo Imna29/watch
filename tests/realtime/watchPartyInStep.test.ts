@@ -485,7 +485,32 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
   });
 
   describe("an invite still waiting for the other Viewer", () => {
-    it("ends once the starter's device has been gone a few seconds", () => {
+    it("stays while the starter has a device on the site, for the other Viewer to join when they come", () => {
+      const h = createHarness({ syncableSource: source });
+      const laptop = h.device("giorgi");
+      const phone = h.device("giorgi");
+      h.advance(SECOND);
+      laptop.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+
+      // Giorgi closes the laptop he started from; his phone stays on the site.
+      laptop.closeSite();
+      h.advance(10 * MINUTE);
+      expect(phone.watchParty.elsewhere).toMatchObject({ title: DUNE, phase: { name: "inviting" } });
+
+      // Mariam opens the site long after the invite was sent.
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: DUNE });
+      mariam.watchParty.join();
+      phone.watchParty.join(); // "Watch here"
+      h.advance(15 * SECOND);
+      expect(phone.player?.paused).toBe(false);
+      expect(mariam.player?.paused).toBe(false);
+      expect(apart(phone, mariam)).toBeLessThan(0.5);
+    });
+
+    it("ends once the starter has had no device on the site for two minutes", () => {
       const h = createHarness({ syncableSource: source });
       const giorgi = h.device("giorgi");
       const mariam = h.device("mariam");
@@ -495,15 +520,31 @@ describe.each(syncableSourcesUnderTest())("keeping a Watch Party in step on %s",
       expect(mariam.watchParty.invite).not.toBeNull();
 
       giorgi.closeSite();
-      h.advance(3 * SECOND);
+      h.advance(MINUTE + 50 * SECOND);
       expect(mariam.watchParty.invite).not.toBeNull();
 
-      h.advance(5 * SECOND);
+      h.advance(15 * SECOND);
       expect(mariam.watchParty.invite).toBeNull();
       expect(mariam.watchParty.ended).toMatchObject({ title: DUNE, reason: "gone", by: "giorgi" });
       const later = h.device("mariam");
       h.advance(SECOND);
       expect(later.watchParty.invite).toBeNull();
+    });
+
+    it("is not ended by a starter who comes back within the two minutes", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const mariam = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+
+      giorgi.drop();
+      h.advance(MINUTE);
+      giorgi.restore();
+      h.advance(2 * MINUTE);
+      expect(mariam.watchParty.invite).toMatchObject({ starter: "giorgi", title: DUNE });
+      expect(giorgi.partySync?.view.waitingFor).toBe("mariam");
     });
   });
 });

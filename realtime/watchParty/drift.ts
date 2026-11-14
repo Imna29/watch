@@ -21,7 +21,9 @@
  * A Viewer whose active device has been disconnected for
  * `DISCONNECT_GRACE_MS` is waited for the same way, from where the Watch
  * Party was when the device went away. A Watch Party still waiting for the
- * other Viewer to join ends instead when the starter's device is gone.
+ * other Viewer to join stays while the starter has any device on the site,
+ * so the other Viewer can join whenever they come, and ends ("gone") once
+ * the starter has had none for `INVITE_GRACE_MS`.
  */
 import { z } from "zod";
 import { VIEWERS, type Viewer } from "../../models/Viewer";
@@ -50,6 +52,9 @@ export const RESUME_DELAY_MS = 1000;
  * reconnect to go unnoticed.
  */
 export const DISCONNECT_GRACE_MS = 5000;
+
+/** How long a Watch Party waiting for the other Viewer to join outlasts its starter having no device on the site. */
+export const INVITE_GRACE_MS = 2 * 60_000;
 
 /**
  * After telling a device to catch up, its reports from before it could have
@@ -96,6 +101,8 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
   const catchUps = new Map<Viewer, number[]>();
   /** When each active device that is not connected went away. */
   const awaySince = new Map<DeviceId, number>();
+  /** Since when the starter of the Watch Party `partyId`, still inviting, has had no device on the site. */
+  let starterAway: { partyId: string; since: number } | null = null;
   /** What a waiting Watch Party goes back to. */
   let resumeTo: "playing" | "paused" = "playing";
 
@@ -162,11 +169,21 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
     });
   }
 
+  /** Ends the invite once its starter has had no device on the site for `INVITE_GRACE_MS`. */
+  function keepInviteWhileStarterIsOn(current: WatchPartyState) {
+    const { starter } = current;
+    if (context.devices().some((device) => device.viewer === starter)) {
+      starterAway = null;
+      return;
+    }
+    if (starterAway?.partyId !== current.id) starterAway = { partyId: current.id, since: context.now() };
+    if (context.now() - starterAway.since >= INVITE_GRACE_MS) end("gone", starter);
+  }
+
   /** `viewer`'s active device went away at server time `since`, and has not come back. */
   function gone(current: WatchPartyState, viewer: Viewer, since: number) {
     const { phase } = current;
-    if (phase.name === "inviting" && viewer === current.starter) end("gone", viewer);
-    else if (phase.name === "playing" || phase.name === "paused") {
+    if (phase.name === "playing" || phase.name === "paused") {
       // From where the Watch Party was when they went: they miss nothing while they are gone.
       wait(current, viewer, "disconnected", anchorAt(current.anchor, since).position);
     } else if (phase.name === "waiting" && (phase.viewer !== viewer || phase.reason !== "disconnected")) {
@@ -258,6 +275,8 @@ export function keepInStep({ context, party, publish, end }: DriftOptions) {
       }
       // A Tab Share stands still anyway, with no Syncable Source player to wait for (`./tabShare.ts`).
       if (!current || current.mode === "tab-share") return;
+      if (current.phase.name === "inviting") return keepInviteWhileStarterIsOn(current);
+      starterAway = null;
       for (const viewer of VIEWERS) {
         const device = current.activeDevices[viewer];
         if (device === null || connected.has(device)) continue;

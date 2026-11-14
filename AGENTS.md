@@ -157,8 +157,9 @@ Staying in step (`drift.ts` on the server):
   up to the frozen point; once every player is there, all start again at one
   moment just ahead.
 - An active device disconnected for 5 s (`DISCONNECT_GRACE_MS`) is waited
-  for the same way, from where it left. A waiting invite ends instead
-  ("gone").
+  for the same way, from where it left. A waiting invite stays while the
+  starter has any device on the site, and ends ("gone") once they have had
+  none for 2 minutes (`INVITE_GRACE_MS`).
 - The Device a Viewer takes part from rejoins when it connects again (same
   `DeviceKey`): the coordinator points `activeDevices` at its new connection.
   While the Watch Party waits for a Viewer whose device is gone, any device
