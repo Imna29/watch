@@ -17,10 +17,10 @@ import type { Clock, TimerId } from "../clock";
 import type { DeviceClient } from "../deviceClient";
 import { createListeners } from "../listeners";
 import type { DeviceWatchParty } from "./device";
-import { POSITION_REPORT_MS } from "./drift";
 import { episodeAfter, type EpisodeGuide } from "./episodeGuide";
 import {
   anchorAt,
+  POSITION_REPORT_MS,
   takesPlaybackChanges,
   type Episode,
   type WatchPartyChange,
@@ -175,8 +175,6 @@ function createEchoes(clock: Clock) {
     },
   };
 }
-
-export { anchorAt };
 
 export function createPartySync({
   watchParty,

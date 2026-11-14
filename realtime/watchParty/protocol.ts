@@ -252,6 +252,9 @@ export interface SwitchSourceMessage {
   source: SourceId;
 }
 
+/** How often party sync reports where its player is (`PositionMessage`). */
+export const POSITION_REPORT_MS = 1000;
+
 /**
  * Where this device's player is, sent every `POSITION_REPORT_MS` (`./drift.ts`)
  * so the coordinator can keep the players in step: `position` seconds into

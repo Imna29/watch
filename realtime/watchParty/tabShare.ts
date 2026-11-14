@@ -20,8 +20,13 @@ import type { Viewer } from "../../models/Viewer";
 import { guardHandlers, type MessageHandlers } from "../coordinator";
 import type { DeviceMessageType } from "../protocol";
 import { partyIntentSchema } from "./intentSchema";
-import { anchorAt } from "./partySync";
-import type { StopTabShareMessage, TabShare, TabShareMessage, WatchPartyState } from "./protocol";
+import {
+  anchorAt,
+  type StopTabShareMessage,
+  type TabShare,
+  type TabShareMessage,
+  type WatchPartyState,
+} from "./protocol";
 import { sourceIdSchema } from "./sourceFallback";
 
 export const tabShareSchema = partyIntentSchema("watchParty:tabShare").extend({

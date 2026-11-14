@@ -9,8 +9,7 @@
 import { z } from "zod";
 import { SOURCES, type SourceId } from "../../utils/sources";
 import { partyIntentSchema } from "./intentSchema";
-import { anchorAt } from "./partySync";
-import type { SourceFallback, SwitchSourceMessage, WatchPartyState } from "./protocol";
+import { anchorAt, type SourceFallback, type SwitchSourceMessage, type WatchPartyState } from "./protocol";
 import { canSetRate } from "./sources";
 
 /** A Source of the Source catalog, sent by a device. */

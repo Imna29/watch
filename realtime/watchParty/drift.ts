@@ -33,14 +33,12 @@ import { partyIntentSchema } from "./intentSchema";
 import {
   anchorAt,
   changeMadeBy,
+  POSITION_REPORT_MS,
   type PositionMessage,
   type WatchPartyEndReason,
   type WatchPartyState,
 } from "./protocol";
 import { noTabShare } from "./tabShare";
-
-/** How often party sync reports where its player is. */
-export const POSITION_REPORT_MS = 1000;
 
 /** Players this close together are in step; further apart, the one behind is moved forward. */
 export const DRIFT_IGNORED_S = 0.5;
