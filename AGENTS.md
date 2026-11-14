@@ -94,8 +94,8 @@ relays setup between the two Viewers' Call devices. The browser's media and
 `RTCPeerConnection` come in through `CallPlatform` (`realtime/call/platform.ts`):
 `browserCallPlatform` in the browser, fakes in seam 1 (`harness/fakeMedia.ts`).
 Its UI, `<WatchCall>`, sits in `layouts/watchLayout.vue` and teleports its
-tiles into the open player shell (`usePlayerOverlayHost()`), so they stay
-visible in the shell's fullscreen. ICE servers come from
+tiles into the open player's frame (`<WatchPlayerFrame>`, `usePlayerOverlayHost()`), so they stay
+visible in its fullscreen. ICE servers come from
 `GET /api/call/ice-servers` (`server/call/relay.ts`: `TURN_HOST`, `TURN_SECRET`).
 
 The Watch Party (`realtime/watchParty/`, ADR 0002) adds two device-side parts:

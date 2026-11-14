@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The Watch Party player: the player shell, run by party sync, on the one
+ * The Watch Party player: the player frame (`<WatchPlayerFrame>`), run by party sync, on the one
  * device of this Viewer that takes part. The layout shows it on every page,
  * keyed on the Watch Party, while this device takes part, and after the
  * other Viewer left it: then it asks "Keep watching alone / Stop", and plays
@@ -135,9 +135,8 @@ const miniStatus = computed(() => {
 </script>
 
 <template>
-    <WatchPlayerShell ref="shell" :content-type="party.title.contentType" :tmdb-id="party.title.tmdbId"
-        :title="party.title.name" :season="party.episode?.season" :episode="party.episode?.episode"
-        :party-src="shellSrc" v-model:minimized="minimized" @close="close()">
+    <WatchPlayerFrame ref="shell" :content-type="party.title.contentType" :tmdb-id="party.title.tmdbId"
+        :title="party.title.name" :src="shellSrc" minimizable v-model:minimized="minimized" @close="close()">
         <template v-if="miniStatus" #mini>{{ miniStatus }}</template>
         <div class="absolute inset-0 flex items-center justify-center" aria-live="polite">
             <div v-if="watchParty.state.value.left"
@@ -236,5 +235,5 @@ const miniStatus = computed(() => {
                 <WatchTabShareButton></WatchTabShareButton>
             </template>
         </template>
-    </WatchPlayerShell>
+    </WatchPlayerFrame>
 </template>
