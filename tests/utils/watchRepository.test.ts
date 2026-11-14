@@ -80,6 +80,12 @@ describe("watchRepository", () => {
     });
   });
 
+  it("gets the list of Analyses", async () => {
+    const { fetch, repo } = makeRepo();
+    await repo.getAnalyses();
+    expect(fetch).toHaveBeenCalledWith("/analyses");
+  });
+
   it("passes the search term as an encoded query parameter", async () => {
     const { fetch, repo } = makeRepo();
     await repo.search("tom & jerry #1");

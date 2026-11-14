@@ -33,6 +33,7 @@ export const queryKeys = {
   // Every Analyses key starts with `all`, so a mutation invalidates the whole group at once.
   analyses: {
     all: ['analyses'] as const,
+    list: () => ['analyses', 'list'] as const,
     byMovie: (movieId: number) => ['analyses', 'movie', movieId] as const,
   },
   search: (query: string) => ['search', query] as const,

@@ -1,5 +1,5 @@
 import type { $Fetch, NitroFetchRequest } from "nitropack";
-import type { Analysis } from "~/models/apiModels/watch/Analysis";
+import type { Analysis, AnalysisList } from "~/models/apiModels/watch/Analysis";
 import type LastWatched from "~/models/apiModels/watch/LastWatched";
 import type {
   GenreResponse,
@@ -128,6 +128,11 @@ export const watchRepository = <T>(fetch: $Fetch<T, NitroFetchRequest>) => ({
   },
 
   // Analyses
+  /** Every Analysis in list order, with the average Grade (null while none is graded). */
+  async getAnalyses() {
+    return fetch<AnalysisList>(`/analyses`);
+  },
+
   /** The movie's Analysis; `analysis` is null when it has none. */
   async getAnalysis(movieId: number) {
     return fetch<{ analysis: Analysis | null }>(`/analyses/${movieId}`);

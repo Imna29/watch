@@ -220,3 +220,68 @@ describe("a graded Analysis is locked", () => {
     expect(await analyses.write("giorgi", MEMENTO, "About Memento.")).toMatchObject({ outcome: "written" });
   });
 });
+
+describe("the list of Analyses", () => {
+  const INCEPTION = 27205;
+  const PRESTIGE = 1124;
+
+  it("puts ungraded Analyses first, then the rest, each newest first, for either Viewer", async () => {
+    const { clock, analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    clock.advance(MINUTE);
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+    clock.advance(MINUTE);
+    await analyses.write("giorgi", INCEPTION, "About Inception.");
+    clock.advance(MINUTE);
+    await analyses.write("giorgi", PRESTIGE, "About The Prestige.");
+    clock.advance(MINUTE);
+    await analyses.grade("mariam", MEMENTO, 7, null);
+    await analyses.grade("mariam", PRESTIGE, 5, null);
+
+    for (const viewer of ["giorgi", "mariam"] as const) {
+      const { analyses: listed } = await analyses.list(viewer);
+      expect(listed.map((analysis) => analysis.movieId)).toEqual([INCEPTION, FIGHT_CLUB, PRESTIGE, MEMENTO]);
+    }
+  });
+
+  it("orders by first submission, so an edit does not move an Analysis up", async () => {
+    const { clock, analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    clock.advance(MINUTE);
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+    clock.advance(MINUTE);
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club, revised.");
+
+    const { analyses: listed } = await analyses.list("mariam");
+    expect(listed.map((analysis) => analysis.movieId)).toEqual([MEMENTO, FIGHT_CLUB]);
+  });
+
+  it("averages the graded Analyses only, counting -1 as -1, to one decimal", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+    await analyses.write("giorgi", MEMENTO, "About Memento.");
+    await analyses.write("giorgi", INCEPTION, "About Inception.");
+    await analyses.write("giorgi", PRESTIGE, "About The Prestige.");
+    await analyses.grade("mariam", FIGHT_CLUB, 8, null);
+    await analyses.grade("mariam", MEMENTO, -1, "Missed it entirely.");
+    await analyses.grade("mariam", INCEPTION, 4, null);
+
+    // (8 - 1 + 4) / 3 = 3.67; The Prestige, ungraded, does not count.
+    for (const viewer of ["giorgi", "mariam"] as const) {
+      expect(await analyses.list(viewer)).toMatchObject({ average: 3.7 });
+    }
+  });
+
+  it("has no average while nothing is graded", async () => {
+    const { analyses } = setUp();
+    await analyses.write("giorgi", FIGHT_CLUB, "About Fight Club.");
+
+    expect(await analyses.list("mariam")).toMatchObject({ average: null });
+  });
+
+  it("is empty, with no average, before any Analysis is written", async () => {
+    const { analyses } = setUp();
+
+    expect(await analyses.list("giorgi")).toEqual({ analyses: [], average: null });
+  });
+});

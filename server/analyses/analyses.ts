@@ -27,6 +27,8 @@ export interface Analysis {
 export interface AnalysisStore {
   /** The movie's Analysis, or null when it has none. */
   find(movieId: number): Promise<Analysis | null>;
+  /** Every movie's Analysis, in any order. */
+  all(): Promise<Analysis[]>;
   /**
    * Gives the movie an Analysis with `text`, submitted and edited `at`, or,
    * when it has an ungraded one, replaces its text and edited time. Returns it
@@ -86,7 +88,38 @@ export function createAnalyses({ store, now = Date.now }: AnalysesOptions) {
     async forMovie(_viewer: Viewer, movieId: number): Promise<Analysis | null> {
       return store.find(movieId);
     },
+
+    /**
+     * Every Analysis, ungraded first, then newest first by first submission,
+     * with the average Grade. Either Viewer may read it.
+     */
+    async list(_viewer: Viewer): Promise<AnalysisList> {
+      const all = await store.all();
+      return { analyses: all.sort(inListOrder), average: averageGrade(all) };
+    },
   };
 }
 
 export type Analyses = ReturnType<typeof createAnalyses>;
+
+/** Every Analysis, as `list` gives it. */
+export interface AnalysisList {
+  /** Ungraded first, then newest first by first submission. */
+  analyses: Analysis[];
+  /** The mean Grade of the graded Analyses (-1 counts as -1), to one decimal; null while none is graded. */
+  average: number | null;
+}
+
+/** Ungraded before graded; within each, the later first submission first. */
+function inListOrder(a: Analysis, b: Analysis): number {
+  const ungradedFirst = Number(a.grade !== null) - Number(b.grade !== null);
+  return ungradedFirst || b.submittedAt.getTime() - a.submittedAt.getTime();
+}
+
+function averageGrade(analyses: Analysis[]): number | null {
+  const grades = analyses.flatMap((analysis) => (analysis.grade === null ? [] : [analysis.grade]));
+  if (grades.length === 0) return null;
+  const sum = grades.reduce((total, grade) => total + grade, 0);
+  // Tenths from whole numbers first, so the rounding sees no floating-point error.
+  return Math.round((sum * 10) / grades.length) / 10;
+}

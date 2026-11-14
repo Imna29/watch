@@ -13,6 +13,11 @@ export function createPostgresAnalysisStore(db: Database): AnalysisStore {
       return row ? toAnalysis(row) : null;
     },
 
+    async all() {
+      const rows = await db.select().from(analyses);
+      return rows.map(toAnalysis);
+    },
+
     // `insert ... on conflict do update ... where grade is null`: on a graded
     // row the update is skipped and nothing is returned.
     async writeUnlessGraded(movieId, text, at) {

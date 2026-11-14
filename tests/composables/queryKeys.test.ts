@@ -17,6 +17,10 @@ describe("queryKeys", () => {
     expect(queryKeys.analyses.byMovie(550)).toEqual(["analyses", "movie", 550]);
   });
 
+  it("nests the list of Analyses key under the same analyses root", () => {
+    expect(queryKeys.analyses.list()).toEqual(["analyses", "list"]);
+  });
+
   it("includes every discover parameter in the key", () => {
     expect(queryKeys.movies.discover([1, 2], "popularity.desc", 3)).toEqual([
       "movies", "discover", [1, 2], "popularity.desc", 3,
