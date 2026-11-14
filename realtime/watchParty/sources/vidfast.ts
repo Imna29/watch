@@ -14,7 +14,14 @@
  *   says no server of VidFast has the Title.
  */
 import { getSource } from "../../../utils/sources";
-import { createSourceLink, sourceFailed, type AdapterFactory, type PlayerEvent } from "./adapter";
+import {
+  createSourceLink,
+  sourceFailed,
+  type AdapterFactory,
+  type AdapterOptions,
+  type PlayerEvent,
+  type SyncableSourceAdapter,
+} from "./adapter";
 
 /** How often a player that is not ready yet is asked for its status. */
 const READY_POLL_MS = 500;
@@ -45,7 +52,10 @@ function seconds(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export const createVidFastAdapter: AdapterFactory = (options) => {
+/** VidFast has no speed command. */
+const CAN_SET_RATE = false;
+
+function createAdapter(options: AdapterOptions): SyncableSourceAdapter {
   const source = getSource("vidfast");
   const { clock } = options;
   let pollTimer: unknown = null;
@@ -107,7 +117,7 @@ export const createVidFastAdapter: AdapterFactory = (options) => {
 
   return {
     source,
-    canSetRate: false,
+    canSetRate: CAN_SET_RATE,
 
     load(playable, startAt) {
       stopAsking();
@@ -128,7 +138,6 @@ export const createVidFastAdapter: AdapterFactory = (options) => {
       link.post({ command: "seek", time: Math.round(position) });
     },
 
-    // VidFast has no speed command.
     setRate() {},
 
     requestStatus() {
@@ -142,4 +151,6 @@ export const createVidFastAdapter: AdapterFactory = (options) => {
       link.destroy();
     },
   };
-};
+}
+
+export const createVidFastAdapter: AdapterFactory = Object.assign(createAdapter, { canSetRate: CAN_SET_RATE });

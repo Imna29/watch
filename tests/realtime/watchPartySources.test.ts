@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WatchPlaylistItemType } from "../../models/apiModels/watch/Playlist";
 import { describeChange } from "../../realtime/watchParty/changeMessage";
 import { getSource } from "../../utils/sources";
-import { createHarness, SECOND, syncableSourcesUnderTest, type TestDevice } from "./harness";
+import { createHarness, SECOND, sourceCanSetRate, syncableSourcesUnderTest, type TestDevice } from "./harness";
 import type { FakePlayerOptions } from "./harness/fakeSourcePlayers";
 
 const MINUTE = 60 * SECOND;
@@ -122,6 +122,29 @@ describe.each(syncableSourcesUnderTest())("Syncable Sources in a Watch Party on 
       expect(giorgi.player?.paused).toBe(false);
       expect(giorgi.player!.position).toBeCloseTo(mariam.player!.position, 0);
     });
+
+    it.runIf(sourceCanSetRate(source) && !sourceCanSetRate(next))(
+      "to one that cannot change speed goes on at normal speed for both",
+      () => {
+        const { h, giorgi, mariam } = together();
+        h.advance(MINUTE);
+        giorgi.player!.controls.setSpeed(1.5);
+        h.advance(5 * SECOND);
+        expect(mariam.player?.rate).toBe(1.5);
+
+        mariam.watchParty.switchSource(next);
+        h.advance(10 * SECOND);
+        const before = giorgi.player!.position;
+        h.advance(20 * SECOND);
+
+        for (const device of [giorgi, mariam]) {
+          expect(device.watchParty.party?.anchor.rate).toBe(1);
+          expect(device.player).toMatchObject({ sourceId: next, rate: 1, paused: false });
+        }
+        expect(giorgi.player!.position).toBeCloseTo(before + 20, 0);
+        expect(mariam.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+      },
+    );
 
     it("waits for both players to load the new Source, even when one only now reports the old one", () => {
       const h = createHarness({ syncableSource: source, fallbackSources: [next] });

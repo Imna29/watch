@@ -10,6 +10,7 @@ import { z } from "zod";
 import { SOURCES, type SourceId } from "../../utils/sources";
 import { anchorAt } from "./partySync";
 import type { SourceFallback, SwitchSourceMessage, WatchPartyState } from "./protocol";
+import { canSetRate } from "./sources";
 
 /** A Source of the Source catalog, sent by a device. */
 export const sourceIdSchema = z.custom<SourceId>(
@@ -53,7 +54,8 @@ function fallbackAfter(failedSources: readonly SourceId[], sources: readonly Sou
  * `now`. Both players load it where the Title is now. A Watch Party that was
  * playing (or about to) then waits for both and starts again with a 3-2-1,
  * as at the start; a paused one stays paused, and one still waiting for the
- * other Viewer goes on waiting.
+ * other Viewer goes on waiting. On a Source that cannot change speed, both
+ * go on at normal speed.
  */
 export function afterSourceSwitch(
   party: WatchPartyState,
@@ -65,6 +67,11 @@ export function afterSourceSwitch(
     source,
     fallback: null,
     phase: resumes ? { name: "countdown", endsAt: null } : party.phase,
-    anchor: { ...party.anchor, position: anchorAt(party.anchor, now).position, serverTime: now, playing: false },
+    anchor: {
+      position: anchorAt(party.anchor, now).position,
+      serverTime: now,
+      playing: false,
+      rate: canSetRate(source) ? party.anchor.rate : 1,
+    },
   };
 }

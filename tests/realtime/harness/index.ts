@@ -43,11 +43,7 @@ import type { Viewer } from "../../../models/Viewer";
 import type { Clock } from "../../../realtime/clock";
 import { createRealtimeDevice, type RealtimeDevice } from "../../../realtime/device";
 import { createPartySync, type PartySync } from "../../../realtime/watchParty/partySync";
-import {
-  SYNCABLE_SOURCE_ADAPTERS,
-  WATCH_PARTY_SOURCES,
-  type AdaptedSourceId,
-} from "../../../realtime/watchParty/sources";
+import { canSetRate, WATCH_PARTY_SOURCES, type AdaptedSourceId } from "../../../realtime/watchParty/sources";
 import { createFakeClock } from "./fakeClock";
 import { createFakeHistory } from "./fakeHistory";
 import { createFakeMediaWorld, type FakeCallPlatform } from "./fakeMedia";
@@ -117,10 +113,7 @@ export function syncableSourcesUnderTest(): AdaptedSourceId[] {
  * `it.runIf(sourceCanSetRate(source))(...)`.
  */
 export function sourceCanSetRate(source: AdaptedSourceId): boolean {
-  const clock = createFakeClock();
-  const adapter = SYNCABLE_SOURCE_ADAPTERS[source]({ frame: createFakeFrame(clock), clock });
-  adapter.destroy();
-  return adapter.canSetRate;
+  return canSetRate(source);
 }
 
 export interface HarnessOptions {

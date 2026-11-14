@@ -77,7 +77,11 @@ export interface AdapterOptions {
   readyTimeoutMs?: number;
 }
 
-export type AdapterFactory = (options: AdapterOptions) => SyncableSourceAdapter;
+export interface AdapterFactory {
+  (options: AdapterOptions): SyncableSourceAdapter;
+  /** The `canSetRate` of the adapters it creates, known without a player (for the coordinator). */
+  readonly canSetRate: boolean;
+}
 
 /**
  * CineSrc can take a while to find a server that has the Title, and sends
