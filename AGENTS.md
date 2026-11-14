@@ -269,6 +269,12 @@ or accept the browser's warning. Pages that call TMDB need a real
 - `stores/watchStore.ts` Pinia store (search box state)
 - `server/api/watch/**` TMDB proxy; `server/api/playlists/**` and
   `server/api/watched-episodes/**` DB-backed, per Viewer
+- `server/api/analyses/**` DB-backed, shared by both Viewers: the roles in
+  `models/Viewer.ts` (`ANALYSIS_WRITER`, `ANALYSIS_GRADER`) decide who may
+  write, delete or grade
+- `server/analyses/` the Analyses rules, framework-free (`analyses.ts`, storage
+  through its `AnalysisStore` port, tested on an in-memory store in
+  `tests/server/`), and the port's Postgres store (`postgresStore.ts`)
 - `server/utils/*.ts` are auto-imported inside `server/`
 - `realtime/` the realtime connection, server and device sides (see "Realtime")
 
