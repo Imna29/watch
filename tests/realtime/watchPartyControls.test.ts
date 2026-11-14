@@ -145,4 +145,56 @@ describe.each(syncableSourcesUnderTest())("shared controls in a Watch Party on %
       expect(mariam.player?.paused).toBe(false);
     });
   });
+
+  describe("after another device of the Viewer took over", () => {
+    it("a pause pressed on the device it moved away from changes nothing", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam", { delayMs: 2 * SECOND });
+      const phone = h.device("mariam");
+      h.advance(5 * SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      laptop.watchParty.join();
+      h.advance(MINUTE);
+
+      phone.watchParty.join();
+      h.advance(SECOND);
+      // The laptop has not heard yet that the phone took over, and Mariam presses pause there.
+      expect(laptop.player?.paused).toBe(false);
+      const changes = giorgi.watchParty.party!.seq;
+      laptop.player!.controls.pause();
+      h.advance(10 * SECOND);
+
+      expect(giorgi.watchParty.party).toMatchObject({ seq: changes, phase: { name: "playing" } });
+      expect(giorgi.player?.paused).toBe(false);
+      expect(phone.player?.paused).toBe(false);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+      expect(laptop.player).toBeNull();
+    });
+
+    it("the new device's player starting on its own does not resume a paused Watch Party", () => {
+      const h = createHarness({ syncableSource: source });
+      const giorgi = h.device("giorgi");
+      const laptop = h.device("mariam");
+      const phone = h.device("mariam");
+      h.advance(SECOND);
+      giorgi.watchParty.start(DUNE, null);
+      h.advance(5 * SECOND);
+      laptop.watchParty.join();
+      h.advance(MINUTE);
+      giorgi.player!.controls.pause();
+      h.advance(SECOND);
+      const changes = giorgi.watchParty.party!.seq;
+
+      phone.watchParty.join();
+      h.advance(10 * SECOND);
+
+      expect(phone.player?.ready).toBe(true);
+      expect(phone.player?.paused).toBe(true);
+      expect(giorgi.player?.paused).toBe(true);
+      expect(phone.player!.position).toBeCloseTo(giorgi.player!.position, 0);
+      expect(giorgi.watchParty.party).toMatchObject({ seq: changes + 1, phase: { name: "paused" } }); // + the takeover
+    });
+  });
 });
