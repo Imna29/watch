@@ -1,3 +1,4 @@
+import { browserCallPlatform } from "~/realtime/call/browserPlatform";
 import { systemClock } from "~/realtime/clock";
 import { REALTIME_PATH } from "~/realtime/connection/protocol";
 import { createRealtimeDevice } from "~/realtime/device";
@@ -34,6 +35,7 @@ export default defineNuxtPlugin(() => {
         url: () => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${REALTIME_PATH}`,
         openSocket: openWebSocket,
         clock: systemClock,
+        call: browserCallPlatform,
     });
     return { provide: { realtime } };
 });

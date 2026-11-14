@@ -12,9 +12,11 @@
  *
  * Fullscreen applies to this container, never to the iframe, so anything
  * rendered inside it stays visible in fullscreen:
- * - the default slot is the overlay layer above the player (Call tiles,
- *   Watch Party messages, countdowns...). The layer lets clicks through to
- *   the player; an overlay that needs clicks sets `pointer-events-auto`.
+ * - the default slot is the overlay layer above the player (Watch Party
+ *   messages, countdowns...). The layer lets clicks through to the player;
+ *   an overlay that needs clicks sets `pointer-events-auto`. Overlays that
+ *   live outside the player (the Call's tiles, `<WatchCall>`) teleport into
+ *   the same layer through `usePlayerOverlayHost()`.
  * - the `controls` slot adds items to the control bar, before "Close".
  * Popups inside the shell must render inside it too (e.g. `append-to="self"`
  * on PrimeVue Selects): anything teleported to <body> is hidden in fullscreen.
@@ -53,6 +55,8 @@ const sourceOptions = [...SOURCES];
 
 const shell = useTemplateRef<HTMLElement>("shell");
 const iframe = useTemplateRef<HTMLIFrameElement>("iframe");
+// Overlays from outside the player (the Call's tiles, from the app layout) teleport into this layer.
+providePlayerOverlayHost(useTemplateRef<HTMLElement>("overlay"));
 const sourcePickerId = useId();
 
 const {
@@ -129,7 +133,7 @@ defineExpose({
                 class="absolute top-0 left-0 w-full h-full" frameborder="0"
                 allow="autoplay; encrypted-media; picture-in-picture"></iframe>
 
-            <div class="absolute inset-0 pointer-events-none">
+            <div ref="overlay" class="absolute inset-0 pointer-events-none">
                 <slot></slot>
             </div>
 

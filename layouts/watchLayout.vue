@@ -23,6 +23,8 @@ const watchParty = useWatchParty();
         <WatchPartyPlayer v-if="watchParty.state.value.activeHere"
             :key="watchParty.state.value.party?.id"></WatchPartyPlayer>
         <WatchPartyBanner></WatchPartyBanner>
+        <!-- The Call lives here, not in a page, so browsing and the player never drop it. -->
+        <WatchCall></WatchCall>
     </div>
 </template>
 
